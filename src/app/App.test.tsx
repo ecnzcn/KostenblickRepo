@@ -12,9 +12,9 @@ function renderApp() {
 }
 
 describe('App', () => {
-  it('renders the home page by default', () => {
+  it('renders the dashboard on the home route by default', () => {
     renderApp()
-    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Kostenblick' })).toBeInTheDocument()
   })
 
   it('renders all items in the bottom navigation', () => {
