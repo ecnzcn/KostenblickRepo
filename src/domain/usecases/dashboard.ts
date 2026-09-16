@@ -6,6 +6,7 @@ import {
   userRepository,
 } from '../repositories/indexedDbRepositories'
 import type { BalanceType, Bill, Category, Contract, CostEntry } from '../models/entities'
+import { BILL_TYPE_LABELS } from './bills'
 import { calculatePercentageChange } from './percentageChange'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -142,12 +143,6 @@ export function getUpcomingContractDeadlines(
     })
     .sort((a, b) => new Date(a.cancellationDate).getTime() - new Date(b.cancellationDate).getTime())
     .slice(0, limit)
-}
-
-const BILL_TYPE_LABELS: Record<Bill['type'], string> = {
-  utility: 'Nebenkostenabrechnung',
-  operating_cost: 'Betriebskostenabrechnung',
-  annual_statement: 'Jahresabrechnung',
 }
 
 export function getLatestBill(bills: Bill[]): BillSummary | undefined {

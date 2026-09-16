@@ -26,7 +26,7 @@ export function CostTrendChart({ monthlyCosts }: CostTrendChartProps) {
             Importiere deine erste Abrechnung, um deine Kostenentwicklung zu sehen.
           </p>
           <Link
-            to={ROUTES.bills}
+            to={ROUTES.billsNew}
             className="mt-1 inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-sm font-medium text-white"
           >
             Abrechnung importieren
