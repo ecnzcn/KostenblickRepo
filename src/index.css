@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --color-accent: #0a84ff;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+  font-family: var(--font-sans);
+  /* Respect iPhone safe areas (notch / home indicator) in standalone PWA mode */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+#root {
+  min-height: 100dvh;
+}
