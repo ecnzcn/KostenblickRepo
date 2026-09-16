@@ -3,22 +3,27 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// GitHub Pages serves this project from a /<repo>/ subpath. Locally and on
+// other static hosts (Vercel, Netlify, …) the app is served from the root.
+const base = process.env.GITHUB_PAGES ? '/KostenblickRepo/' : '/'
+
 // https://vite.dev/config/
 export default defineConfig({
+  base,
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['favicon.svg'],
       manifest: {
-        id: '/',
+        id: '.',
         name: 'Kostenblick',
         short_name: 'Kostenblick',
         description:
           'Persönliche Übersicht für Nebenkosten, Verträge und Haushaltskosten.',
-        start_url: '/',
-        scope: '/',
+        start_url: '.',
+        scope: '.',
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#ffffff',
