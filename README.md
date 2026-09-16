@@ -42,7 +42,8 @@ Phasenplan):
 
 ## Lokale Entwicklung
 
-Voraussetzung: Node.js ≥ 20.
+Voraussetzung: Node.js ≥ 22 (einige Dev-Dependencies wie `vitest`/`jsdom`
+setzen dies voraus).
 
 ```bash
 npm install
