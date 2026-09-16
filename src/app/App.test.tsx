@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
@@ -17,12 +17,19 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
   })
 
-  it('renders all bottom navigation items', () => {
+  it('renders all items in the bottom navigation', () => {
     renderApp()
     const nav = screen.getByRole('navigation', { name: 'Hauptnavigation' })
     for (const label of ['Home', 'Statistik', 'Abrechnungen', 'Verträge', 'Mehr']) {
-      expect(screen.getByRole('link', { name: new RegExp(label) })).toBeInTheDocument()
+      expect(within(nav).getByRole('link', { name: new RegExp(label) })).toBeInTheDocument()
     }
-    expect(nav).toBeInTheDocument()
+  })
+
+  it('renders all items in the desktop sidebar navigation', () => {
+    renderApp()
+    const nav = screen.getByRole('navigation', { name: 'Seitennavigation' })
+    for (const label of ['Home', 'Statistik', 'Abrechnungen', 'Verträge', 'Mehr']) {
+      expect(within(nav).getByRole('link', { name: new RegExp(label) })).toBeInTheDocument()
+    }
   })
 })
