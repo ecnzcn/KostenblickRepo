@@ -2,7 +2,7 @@ import { DEFAULT_USER_ID } from '../../constants/user'
 import { ACCEPTED_DOCUMENT_MIME_TYPES, MAX_DOCUMENT_SIZE_BYTES } from '../../constants/files'
 import { documentStorageService } from '../../services/storage/IndexedDbDocumentStorageService'
 import { generateId } from '../../utils/id'
-import type { Document, DocumentType } from '../models/entities'
+import type { Bill, Contract, Document, DocumentType, WasteCost } from '../models/entities'
 import {
   billRepository,
   contractRepository,
@@ -35,7 +35,13 @@ export async function calculateChecksum(file: File): Promise<string> {
 
 /** Persists a validated file's bytes via DocumentStorageService and records
  * its metadata as a Document entity. Throws with a user-presentable German
- * message on failure rather than letting a raw storage error surface. */
+ * message on failure rather than letting a raw storage error surface.
+ * Once the blob is saved, everything after it (checksum, Document write)
+ * runs in a second try/catch that rolls the blob back on any failure - a
+ * checksum error or a failed Document write must never leave an orphaned
+ * blob with no metadata record pointing to it. The rollback is
+ * best-effort (its own failure is swallowed) so it never masks the
+ * original error the caller needs to see. */
 export async function saveDocumentFile(file: File, type: DocumentType): Promise<Document> {
   const errors = validateDocumentFile(file)
   if (errors.length > 0) throw new Error(errors.join(' '))
@@ -46,25 +52,30 @@ export async function saveDocumentFile(file: File, type: DocumentType): Promise<
   } catch {
     throw new Error('Das Dokument konnte nicht gespeichert werden. Bitte versuche es erneut.')
   }
-  const checksum = await calculateChecksum(file)
 
-  const now = new Date().toISOString()
-  const document: Document = {
-    id: generateId(),
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-    syncVersion: 1,
-    userId: DEFAULT_USER_ID,
-    type,
-    filename: storageResult.filename,
-    mimeType: storageResult.mimeType,
-    size: storageResult.size,
-    storagePath: storageResult.storageKey,
-    ocrStatus: 'not_started',
-    checksum,
+  try {
+    const checksum = await calculateChecksum(file)
+    const now = new Date().toISOString()
+    const document: Document = {
+      id: generateId(),
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      syncVersion: 1,
+      userId: DEFAULT_USER_ID,
+      type,
+      filename: storageResult.filename,
+      mimeType: storageResult.mimeType,
+      size: storageResult.size,
+      storagePath: storageResult.storageKey,
+      ocrStatus: 'not_started',
+      checksum,
+    }
+    return await documentRepository.save(document)
+  } catch (error) {
+    await documentStorageService.delete(storageResult.storageKey).catch(() => undefined)
+    throw error
   }
-  return documentRepository.save(document)
 }
 
 /** Replaces a document's bytes in place ("Datei ersetzen"): saves the new
@@ -133,27 +144,49 @@ export interface DocumentLinkedEntity {
   label: string
 }
 
+/** Builds a documentId -> linkedEntity lookup from already-loaded
+ * Bill/Contract/WasteCost lists in a single O(B+C+W) pass, preserving the
+ * original priority (Bill, then Contract, then WasteCost) for the rare
+ * case a documentId were ever set on more than one record - the first
+ * write for a given key wins, matching the previous sequential-find order. */
+function buildLinkedEntityIndex(
+  bills: Bill[],
+  contracts: Contract[],
+  wasteCosts: WasteCost[],
+): Map<string, DocumentLinkedEntity> {
+  const index = new Map<string, DocumentLinkedEntity>()
+  for (const bill of bills) {
+    if (bill.documentId && !index.has(bill.documentId)) {
+      index.set(bill.documentId, { entityType: 'bill', entityId: bill.id, label: `Abrechnung ${bill.year}` })
+    }
+  }
+  for (const contract of contracts) {
+    if (contract.documentId && !index.has(contract.documentId)) {
+      index.set(contract.documentId, { entityType: 'contract', entityId: contract.id, label: contract.provider })
+    }
+  }
+  for (const wasteCost of wasteCosts) {
+    if (wasteCost.documentId && !index.has(wasteCost.documentId)) {
+      index.set(wasteCost.documentId, {
+        entityType: 'waste',
+        entityId: wasteCost.id,
+        label: `Müllkosten ${wasteCost.year}`,
+      })
+    }
+  }
+  return index
+}
+
 /** Finds the single Bill/Contract/WasteCost that currently references a
  * document via its `documentId`, if any. A document is only ever attached
- * to one entity at a time in V1 (there is no many-to-many DocumentLink), so
- * the first match wins. */
+ * to one entity at a time in V1 (there is no many-to-many DocumentLink). */
 async function findLinkedEntity(documentId: string): Promise<DocumentLinkedEntity | undefined> {
   const [bills, contracts, wasteCosts] = await Promise.all([
     billRepository.getAll(),
     contractRepository.getAll(),
     wasteCostRepository.getAll(),
   ])
-
-  const bill = bills.find((entry) => entry.documentId === documentId)
-  if (bill) return { entityType: 'bill', entityId: bill.id, label: `Abrechnung ${bill.year}` }
-
-  const contract = contracts.find((entry) => entry.documentId === documentId)
-  if (contract) return { entityType: 'contract', entityId: contract.id, label: contract.provider }
-
-  const wasteCost = wasteCosts.find((entry) => entry.documentId === documentId)
-  if (wasteCost) return { entityType: 'waste', entityId: wasteCost.id, label: `Müllkosten ${wasteCost.year}` }
-
-  return undefined
+  return buildLinkedEntityIndex(bills, contracts, wasteCosts).get(documentId)
 }
 
 export async function getLinkedEntity(documentId: string): Promise<DocumentLinkedEntity | undefined> {
@@ -204,15 +237,25 @@ export interface DocumentOverviewEntry {
 }
 
 /** Loads every document's metadata (never its bytes - see
- * getDocumentBlob for that) together with what it's linked to, once, for
- * the /dokumente overview screen. Sorted newest first; the feature layer
+ * getDocumentBlob for that) together with what it's linked to, for the
+ * /dokumente overview screen. Documents, Bills, Contracts and WasteCosts
+ * are each loaded exactly once (O(D+B+C+W) total) rather than once per
+ * document - a per-document reference lookup would have meant up to 3
+ * extra getAll() calls per row. Sorted newest first; the feature layer
  * applies search/filter/sort on top of this already-loaded list instead of
  * re-querying IndexedDB per interaction. */
 export async function listDocumentsOverview(): Promise<DocumentOverviewEntry[]> {
-  const documents = await documentRepository.getAll()
-  const entries = await Promise.all(
-    documents.map(async (document) => ({ document, linkedEntity: await findLinkedEntity(document.id) })),
-  )
+  const [documents, bills, contracts, wasteCosts] = await Promise.all([
+    documentRepository.getAll(),
+    billRepository.getAll(),
+    contractRepository.getAll(),
+    wasteCostRepository.getAll(),
+  ])
+  const linkedEntityIndex = buildLinkedEntityIndex(bills, contracts, wasteCosts)
+  const entries = documents.map((document) => ({
+    document,
+    linkedEntity: linkedEntityIndex.get(document.id),
+  }))
   return entries.sort(
     (a, b) => new Date(b.document.createdAt).getTime() - new Date(a.document.createdAt).getTime(),
   )

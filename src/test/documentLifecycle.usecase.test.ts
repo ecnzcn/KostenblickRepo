@@ -3,9 +3,15 @@
 // preserved by fake-indexeddb's structuredClone-based store emulation, so
 // reading bytes back would silently see empty objects instead.
 // @vitest-environment node
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteDatabase } from '../database/database'
-import { contractRepository } from '../domain/repositories/indexedDbRepositories'
+import {
+  billRepository,
+  contractRepository,
+  documentRepository,
+  wasteCostRepository,
+} from '../domain/repositories/indexedDbRepositories'
+import { documentStorageService } from '../services/storage/IndexedDbDocumentStorageService'
 import { createBillWithItems, deleteBillWithItems, getBill, type BillInput } from '../domain/usecases/bills'
 import {
   createContract,
@@ -73,6 +79,49 @@ describe('saveDocumentFile', () => {
   it('stores a checksum alongside the document metadata', async () => {
     const document = await saveDocumentFile(makeFile('bill.pdf', 'application/pdf'), 'bill')
     expect(document.checksum).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('success case: the blob and the Document entity both persist', async () => {
+    const document = await saveDocumentFile(makeFile('bill.pdf', 'application/pdf', 'content'), 'bill')
+
+    expect(await getDocument(document.id)).toBeDefined()
+    expect(await documentStorageService.get(document.storagePath)).toBeDefined()
+  })
+
+  it('rolls back the saved blob if persisting the Document entity fails, and propagates the original error', async () => {
+    const saveSpy = vi.spyOn(documentStorageService, 'save')
+    const repoSaveSpy = vi.spyOn(documentRepository, 'save').mockRejectedValueOnce(new Error('write failed'))
+
+    await expect(saveDocumentFile(makeFile('bill.pdf', 'application/pdf'), 'bill')).rejects.toThrow('write failed')
+
+    const storageResult = await saveSpy.mock.results[0]!.value
+    expect(await documentStorageService.get(storageResult.storageKey)).toBeUndefined()
+
+    saveSpy.mockRestore()
+    repoSaveSpy.mockRestore()
+  })
+
+  it('rolls back the saved blob if checksum calculation fails, and propagates the original error', async () => {
+    const saveSpy = vi.spyOn(documentStorageService, 'save')
+    const digestSpy = vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new Error('digest failed'))
+
+    await expect(saveDocumentFile(makeFile('bill.pdf', 'application/pdf'), 'bill')).rejects.toThrow('digest failed')
+
+    const storageResult = await saveSpy.mock.results[0]!.value
+    expect(await documentStorageService.get(storageResult.storageKey)).toBeUndefined()
+
+    saveSpy.mockRestore()
+    digestSpy.mockRestore()
+  })
+
+  it('a rollback failure (blob delete also fails) never masks the original error', async () => {
+    const repoSaveSpy = vi.spyOn(documentRepository, 'save').mockRejectedValueOnce(new Error('write failed'))
+    const deleteSpy = vi.spyOn(documentStorageService, 'delete').mockRejectedValueOnce(new Error('cleanup failed'))
+
+    await expect(saveDocumentFile(makeFile('bill.pdf', 'application/pdf'), 'bill')).rejects.toThrow('write failed')
+
+    repoSaveSpy.mockRestore()
+    deleteSpy.mockRestore()
   })
 })
 
@@ -243,6 +292,37 @@ describe('listDocumentsOverview', () => {
   it('returns an empty list without crashing when there are no documents', async () => {
     expect(await listDocumentsOverview()).toEqual([])
   })
+
+  it('loads each repository exactly once, regardless of how many documents exist (no per-document getAll())', async () => {
+    const linkedDocument = await saveDocumentFile(makeFile('linked.pdf', 'application/pdf'), 'bill')
+    const { bill } = await createBillWithItems(baseBillInput({ documentId: linkedDocument.id }))
+    await saveDocumentFile(makeFile('unlinked-1.pdf', 'application/pdf'), 'other')
+    await saveDocumentFile(makeFile('unlinked-2.pdf', 'application/pdf'), 'other')
+
+    const documentGetAllSpy = vi.spyOn(documentRepository, 'getAll')
+    const billGetAllSpy = vi.spyOn(billRepository, 'getAll')
+    const contractGetAllSpy = vi.spyOn(contractRepository, 'getAll')
+    const wasteGetAllSpy = vi.spyOn(wasteCostRepository, 'getAll')
+
+    const overview = await listDocumentsOverview()
+
+    expect(overview).toHaveLength(3)
+    expect(documentGetAllSpy).toHaveBeenCalledTimes(1)
+    expect(billGetAllSpy).toHaveBeenCalledTimes(1)
+    expect(contractGetAllSpy).toHaveBeenCalledTimes(1)
+    expect(wasteGetAllSpy).toHaveBeenCalledTimes(1)
+
+    // Result stays fachlich identical to a per-document lookup: the linked
+    // document still resolves to the correct Bill, unlinked ones to none.
+    const linkedEntry = overview.find((entry) => entry.document.id === linkedDocument.id)
+    expect(linkedEntry?.linkedEntity).toEqual({ entityType: 'bill', entityId: bill.id, label: 'Abrechnung 2025' })
+    expect(overview.filter((entry) => entry.linkedEntity === undefined)).toHaveLength(2)
+
+    documentGetAllSpy.mockRestore()
+    billGetAllSpy.mockRestore()
+    contractGetAllSpy.mockRestore()
+    wasteGetAllSpy.mockRestore()
+  })
 })
 
 describe('setContractDocument / removeContractDocument', () => {
@@ -259,6 +339,51 @@ describe('setContractDocument / removeContractDocument', () => {
 
   it('throws for an unknown contract id', async () => {
     await expect(setContractDocument('missing', 'doc-1')).rejects.toThrow('nicht gefunden')
+  })
+
+  it('throws for an unknown document id, even when the contract exists', async () => {
+    const contract = await createContract(baseContractInput())
+    await expect(setContractDocument(contract.id, 'missing-document')).rejects.toThrow('nicht gefunden')
+    expect((await contractRepository.getById(contract.id))?.documentId).toBeUndefined()
+  })
+
+  it('re-attaching a different document cleans up the previous one once it is no longer referenced', async () => {
+    const contract = await createContract(baseContractInput())
+    const documentA = await saveDocumentFile(makeFile('a.pdf', 'application/pdf'), 'contract')
+    const documentB = await saveDocumentFile(makeFile('b.pdf', 'application/pdf'), 'contract')
+
+    await setContractDocument(contract.id, documentA.id)
+    const updated = await setContractDocument(contract.id, documentB.id)
+
+    expect(updated.documentId).toBe(documentB.id)
+    expect((await getDocument(documentA.id))?.deletedAt).not.toBeNull()
+    expect((await getDocument(documentB.id))?.deletedAt).toBeNull()
+  })
+
+  it('re-attaching a different document keeps the previous one if another entity still references it', async () => {
+    const contract = await createContract(baseContractInput())
+    const sharedDocument = await saveDocumentFile(makeFile('shared.pdf', 'application/pdf'), 'other')
+    // No UI flow in V1 lets two entities reference the same document, but
+    // the cleanup check must stay safe if that were ever possible.
+    const { bill } = await createBillWithItems(baseBillInput({ documentId: sharedDocument.id }))
+    const newDocument = await saveDocumentFile(makeFile('new.pdf', 'application/pdf'), 'contract')
+
+    await setContractDocument(contract.id, sharedDocument.id)
+    await setContractDocument(contract.id, newDocument.id)
+
+    expect((await getDocument(sharedDocument.id))?.deletedAt).toBeNull()
+    expect((await getBill(bill.id))?.documentId).toBe(sharedDocument.id)
+  })
+
+  it('re-setting the same document is a no-op that does not delete it', async () => {
+    const contract = await createContract(baseContractInput())
+    const document = await saveDocumentFile(makeFile('vertrag.pdf', 'application/pdf'), 'contract')
+    await setContractDocument(contract.id, document.id)
+
+    const updated = await setContractDocument(contract.id, document.id)
+
+    expect(updated.documentId).toBe(document.id)
+    expect((await getDocument(document.id))?.deletedAt).toBeNull()
   })
 
   it('a plain updateContract() call preserves a previously attached document', async () => {
