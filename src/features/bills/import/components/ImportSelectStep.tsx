@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { ACCEPTED_DOCUMENT_INPUT_ACCEPT } from '../../../../constants/files'
 import { FormError } from '../../../../components/form/fields'
+import { formatFileSize } from '../../../../utils/formatters'
 
 interface ImportSelectStepProps {
   file: File | undefined
@@ -8,11 +9,6 @@ interface ImportSelectStepProps {
   onSelect: (file: File | undefined) => void
   onCancel: () => void
   onContinue: () => void
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function ImportSelectStep({ file, error, onSelect, onCancel, onContinue }: ImportSelectStepProps) {

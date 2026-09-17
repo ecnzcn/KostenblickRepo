@@ -3,7 +3,7 @@ import { generateId } from '../../utils/id'
 import { roundToCents } from '../../utils/money'
 import type { BalanceType, Bill, BillItem, BillType } from '../models/entities'
 import { billItemRepository, billRepository } from '../repositories/indexedDbRepositories'
-import { deleteDocument } from './documents'
+import { deleteDocumentIfUnreferenced } from './documents'
 import { sumBillItems } from './validation'
 
 export interface BillItemInput {
@@ -195,11 +195,15 @@ export async function updateBillWithItems(id: string, input: BillInput): Promise
 }
 
 export async function deleteBillWithItems(id: string): Promise<void> {
+  const existing = await billRepository.getById(id)
   const items = await listBillItems(id)
   for (const item of items) {
     await billItemRepository.delete(item.id)
   }
   await billRepository.delete(id)
+  // Deleted after the bill itself, so the reference check below no longer
+  // sees this bill as still holding the document.
+  await deleteDocumentIfUnreferenced(existing?.documentId)
 }
 
 export async function getBill(id: string): Promise<Bill | undefined> {
@@ -215,8 +219,12 @@ export async function listBillItems(billId: string): Promise<BillItem[]> {
  * the bill itself (and its items) are left untouched. */
 export async function removeBillDocument(bill: Bill): Promise<Bill> {
   if (!bill.documentId) return bill
-  await deleteDocument(bill.documentId)
-  return billRepository.save({ ...bill, documentId: undefined, ocrStatus: 'not_started' })
+  const documentId = bill.documentId
+  const updated = await billRepository.save({ ...bill, documentId: undefined, ocrStatus: 'not_started' })
+  // The link is cleared first, so the reference check no longer sees this
+  // bill as still holding the document.
+  await deleteDocumentIfUnreferenced(documentId)
+  return updated
 }
 
 export async function listBills(): Promise<Bill[]> {

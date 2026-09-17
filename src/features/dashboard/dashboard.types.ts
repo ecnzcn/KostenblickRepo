@@ -3,5 +3,6 @@ export type {
   CategoryCost,
   ContractDeadline,
   DashboardData,
+  DocumentsSummary,
   MonthlyCost,
 } from '../../domain/usecases/dashboard'

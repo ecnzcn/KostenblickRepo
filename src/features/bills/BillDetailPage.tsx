@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, Link } from 'react-router-dom'
 import { ErrorState } from '../../components/ErrorState'
 import { ItemActions } from '../../components/ItemActions'
 import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { DocumentViewer } from '../../components/documents/DocumentViewer'
 import { useToast } from '../../components/feedback/useToast'
-import { billEditPath, ROUTES } from '../../constants/navigation'
+import { billEditPath, documentDetailPath, ROUTES } from '../../constants/navigation'
 import type { Bill, BillItem, Category, Document } from '../../domain/models/entities'
 import { BILL_TYPE_LABELS, deleteBillWithItems, getBill, listBillItems, removeBillDocument } from '../../domain/usecases/bills'
 import { getDocument, getDocumentBlob } from '../../domain/usecases/documents'
@@ -176,6 +176,12 @@ export function BillDetailPage() {
               >
                 {documentVisible ? 'Dokument schließen' : 'Dokument öffnen'}
               </button>
+              <Link
+                to={documentDetailPath(billDocument.id)}
+                className="inline-flex min-h-11 items-center rounded-xl border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-700"
+              >
+                In Dokumentenverwaltung öffnen
+              </Link>
               <button
                 type="button"
                 onClick={handleDeleteDocument}

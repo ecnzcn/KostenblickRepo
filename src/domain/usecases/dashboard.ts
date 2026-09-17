@@ -3,9 +3,10 @@ import {
   billRepository,
   contractRepository,
   costEntryRepository,
+  documentRepository,
   userRepository,
 } from '../repositories/indexedDbRepositories'
-import type { BalanceType, Bill, Category, Contract, CostEntry } from '../models/entities'
+import type { BalanceType, Bill, Category, Contract, CostEntry, Document } from '../models/entities'
 import { BILL_TYPE_LABELS } from './bills'
 import { calculatePercentageChange } from './percentageChange'
 
@@ -42,6 +43,11 @@ export interface BillSummary {
   importedAt: string
 }
 
+export interface DocumentsSummary {
+  total: number
+  needsReview: number
+}
+
 export interface DashboardData {
   userDisplayName?: string
   currentMonthCost: number
@@ -54,6 +60,7 @@ export interface DashboardData {
   categoryCosts: CategoryCost[]
   upcomingContracts: ContractDeadline[]
   latestBill?: BillSummary
+  documentsSummary: DocumentsSummary
 }
 
 function monthKey(year: number, month: number): string {
@@ -166,13 +173,21 @@ export function getLatestBill(bills: Bill[]): BillSummary | undefined {
   }
 }
 
+export function getDocumentsSummary(documents: Document[]): DocumentsSummary {
+  return {
+    total: documents.length,
+    needsReview: documents.filter((document) => document.ocrStatus === 'needs_review').length,
+  }
+}
+
 export async function getDashboardData(referenceDate: Date = new Date()): Promise<DashboardData> {
-  const [users, costEntries, categories, contracts, bills] = await Promise.all([
+  const [users, costEntries, categories, contracts, bills, documents] = await Promise.all([
     userRepository.getAll(),
     costEntryRepository.getAll(),
     categoryRepository.getAll(),
     contractRepository.getAll(),
     billRepository.getAll(),
+    documentRepository.getAll(),
   ])
 
   const currentYear = referenceDate.getUTCFullYear()
@@ -205,5 +220,6 @@ export async function getDashboardData(referenceDate: Date = new Date()): Promis
     categoryCosts: getCostsByCategory(costEntries, categories, currentYear),
     upcomingContracts: getUpcomingContractDeadlines(contracts, categories, referenceDate),
     latestBill: getLatestBill(bills),
+    documentsSummary: getDocumentsSummary(documents),
   }
 }

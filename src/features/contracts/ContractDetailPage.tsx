@@ -1,13 +1,21 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, Link } from 'react-router-dom'
+import { DocumentViewer } from '../../components/documents/DocumentViewer'
 import { ErrorState } from '../../components/ErrorState'
 import { ItemActions } from '../../components/ItemActions'
 import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { useToast } from '../../components/feedback/useToast'
-import { contractEditPath, ROUTES } from '../../constants/navigation'
-import type { Contract, Reminder } from '../../domain/models/entities'
-import { deleteContract, getContract } from '../../domain/usecases/contracts'
+import { ACCEPTED_DOCUMENT_INPUT_ACCEPT } from '../../constants/files'
+import { contractEditPath, documentDetailPath, ROUTES } from '../../constants/navigation'
+import type { Contract, Document, Reminder } from '../../domain/models/entities'
+import {
+  deleteContract,
+  getContract,
+  removeContractDocument,
+  setContractDocument as setContractDocumentUseCase,
+} from '../../domain/usecases/contracts'
+import { getDocument, getDocumentBlob, saveDocumentFile, validateDocumentFile } from '../../domain/usecases/documents'
 import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { ContractStatusBadge } from './components/ContractStatusBadge'
@@ -38,6 +46,12 @@ export function ContractDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
+  const [contractDocument, setContractDocument] = useState<Document>()
+  const [documentBlob, setDocumentBlob] = useState<Blob>()
+  const [documentVisible, setDocumentVisible] = useState(false)
+  const [documentBusy, setDocumentBusy] = useState(false)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     if (!id) return
     let cancelled = false
@@ -50,6 +64,11 @@ export function ContractDetailPage() {
         }
         setContract(found)
         setReminders(foundReminders)
+        if (found.documentId) {
+          getDocument(found.documentId).then((doc) => {
+            if (!cancelled) setContractDocument(doc)
+          })
+        }
       })
       .catch(() => {
         if (!cancelled) setError(true)
@@ -70,6 +89,67 @@ export function ContractDetailPage() {
       navigate(ROUTES.contracts)
     } catch {
       showToast('Löschen fehlgeschlagen. Bitte versuche es erneut.', 'error')
+    }
+  }
+
+  async function handleUploadDocument(file: File | undefined) {
+    if (!file || !contract) return
+    const validationErrors = validateDocumentFile(file)
+    if (validationErrors.length > 0) {
+      showToast(validationErrors.join(' '), 'error')
+      return
+    }
+    setDocumentBusy(true)
+    try {
+      const saved = await saveDocumentFile(file, 'contract')
+      const updated = await setContractDocumentUseCase(contract.id, saved.id)
+      setContract(updated)
+      setContractDocument(saved)
+      showToast('Vertragsdokument gespeichert')
+    } catch {
+      showToast('Das Dokument konnte nicht gespeichert werden. Bitte versuche es erneut.', 'error')
+    } finally {
+      setDocumentBusy(false)
+      if (uploadInputRef.current) uploadInputRef.current.value = ''
+    }
+  }
+
+  async function handleToggleDocument() {
+    if (documentVisible) {
+      setDocumentVisible(false)
+      return
+    }
+    if (!contractDocument) return
+    if (!documentBlob) {
+      try {
+        const blob = await getDocumentBlob(contractDocument)
+        if (!blob) {
+          showToast('Das Dokument konnte nicht geladen werden.', 'error')
+          return
+        }
+        setDocumentBlob(blob)
+      } catch {
+        showToast('Das Dokument konnte nicht geladen werden.', 'error')
+        return
+      }
+    }
+    setDocumentVisible(true)
+  }
+
+  async function handleDeleteDocument() {
+    if (!contract || !window.confirm('Das Vertragsdokument wirklich löschen? Der Vertrag bleibt erhalten.')) return
+    setDocumentBusy(true)
+    try {
+      const updated = await removeContractDocument(contract)
+      setContract(updated)
+      setContractDocument(undefined)
+      setDocumentBlob(undefined)
+      setDocumentVisible(false)
+      showToast('Dokument gelöscht')
+    } catch {
+      showToast('Dokument konnte nicht gelöscht werden. Bitte versuche es erneut.', 'error')
+    } finally {
+      setDocumentBusy(false)
     }
   }
 
@@ -121,6 +201,56 @@ export function ContractDetailPage() {
             <p className="mt-1 text-sm text-neutral-700">{contract.notes}</p>
           </div>
         ) : null}
+
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <p className="mb-1 text-sm font-semibold text-neutral-900">Vertragsdokument</p>
+          {contractDocument ? (
+            <>
+              <p className="mb-3 text-sm text-neutral-600">{contractDocument.filename}</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleDocument}
+                  className="min-h-11 rounded-xl border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-700"
+                >
+                  {documentVisible ? 'Dokument schließen' : 'Dokument öffnen'}
+                </button>
+                <Link
+                  to={documentDetailPath(contractDocument.id)}
+                  className="inline-flex min-h-11 items-center rounded-xl border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-700"
+                >
+                  In Dokumentenverwaltung öffnen
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleDeleteDocument}
+                  disabled={documentBusy}
+                  className="min-h-11 rounded-xl border border-red-200 bg-white px-4 text-sm font-medium text-red-600 disabled:opacity-60"
+                >
+                  Dokument löschen
+                </button>
+              </div>
+              {documentVisible && documentBlob ? (
+                <div className="mt-3">
+                  <DocumentViewer blob={documentBlob} mimeType={contractDocument.mimeType} filename={contractDocument.filename} />
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <label className="inline-flex min-h-11 cursor-pointer items-center rounded-xl border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-700">
+              {documentBusy ? 'Wird gespeichert …' : 'Vertragsdokument hochladen'}
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept={ACCEPTED_DOCUMENT_INPUT_ACCEPT}
+                className="sr-only"
+                disabled={documentBusy}
+                onChange={(event) => handleUploadDocument(event.target.files?.[0])}
+              />
+            </label>
+          )}
+        </div>
+
         <ItemActions
           itemLabel={contract.provider}
           onEdit={() => navigate(contractEditPath(contract.id))}

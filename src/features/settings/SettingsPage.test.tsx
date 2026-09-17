@@ -22,6 +22,11 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('link', { name: 'Erinnerungen' })).toHaveAttribute('href', '#/erinnerungen')
   })
 
+  it('links "Dokumente" to the documents page', () => {
+    renderPage()
+    expect(screen.getByRole('link', { name: 'Dokumente' })).toHaveAttribute('href', '#/dokumente')
+  })
+
   it('shows all four reminder intervals enabled by default and persists a toggle', () => {
     renderPage()
 

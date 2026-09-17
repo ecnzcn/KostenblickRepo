@@ -3,6 +3,7 @@ import { CostTrendChart } from './components/CostTrendChart'
 import { DashboardError } from './components/DashboardError'
 import { DashboardHeader } from './components/DashboardHeader'
 import { DashboardSkeleton } from './components/DashboardSkeleton'
+import { DocumentsSummaryCard } from './components/DocumentsSummaryCard'
 import { LatestBillCard } from './components/LatestBillCard'
 import { MonthlyCostCard } from './components/MonthlyCostCard'
 import { QuickActions } from './components/QuickActions'
@@ -46,6 +47,8 @@ export function DashboardPage() {
             <UpcomingContractsCard deadlines={data.upcomingContracts} />
             <LatestBillCard bill={data.latestBill} />
           </div>
+
+          <DocumentsSummaryCard summary={data.documentsSummary} />
 
           <QuickActions />
         </div>

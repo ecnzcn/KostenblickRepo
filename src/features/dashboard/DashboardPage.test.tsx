@@ -42,6 +42,7 @@ const emptyData: DashboardData = {
   monthlyCosts: [{ month: '2026-09', amount: 0 }],
   categoryCosts: [],
   upcomingContracts: [],
+  documentsSummary: { total: 0, needsReview: 0 },
 }
 
 const populatedData: DashboardData = {
@@ -74,6 +75,7 @@ const populatedData: DashboardData = {
     balanceType: 'payment_due',
     importedAt: '2026-09-16T00:00:00.000Z',
   },
+  documentsSummary: { total: 3, needsReview: 1 },
 }
 
 describe('DashboardPage', () => {
@@ -145,5 +147,23 @@ describe('DashboardPage', () => {
 
     expect(screen.getByText('Nächste Vertragsfristen')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Alle Erinnerungen' })).toHaveAttribute('href', '#/erinnerungen')
+  })
+
+  it('shows the documents summary, including how many need review', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('3 Dokumente')).toBeInTheDocument()
+    expect(screen.getByText('1 benötigen Prüfung')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Alle Dokumente' })).toHaveAttribute('href', '#/dokumente')
+  })
+
+  it('shows an empty documents state when there are none', async () => {
+    getDashboardDataMock.mockResolvedValue(emptyData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Noch keine Dokumente vorhanden.')).toBeInTheDocument()
   })
 })

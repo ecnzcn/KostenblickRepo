@@ -104,6 +104,12 @@ Seit Phase 6 sind `domain/usecases/reminders/`, `services/notifications/`
 und `features/reminders/` befüllt (siehe „Vertragsmanagement &
 Erinnerungen"-Abschnitt unten).
 
+Seit Phase 7 ist `features/documents/` befüllt (siehe
+„Dokumentenverwaltung"-Abschnitt unten). `domain/usecases/documents.ts`,
+`services/storage/` und der `documents`/`documentFiles`-Store bestanden
+bereits seit Phase 4 (Bill-Import) und wurden in Phase 7 erweitert statt
+neu gebaut.
+
 ## Domain Models
 
 Mindestens folgende Entities:
@@ -475,6 +481,88 @@ Contract-Delete-Cleanup, IndexedDB-Integration, Altdaten-Kompatibilität),
 `checkDueReminders.test.ts` (Notification-Orchestrierung mit einem
 Fake-`NotificationService`), `RemindersPage.test.tsx`/
 `contracts.ui.test.tsx`/`SettingsPage.tsx`-Tests für die UI.
+
+### Dokumentenverwaltung (Phase 7, `domain/usecases/documents.ts`,
+`features/documents/`)
+
+Zentralisiert die bereits seit Phase 4 bestehende Dokumentablage
+(`Document`-Entity, `documentFiles`-Blob-Store, `DocumentStorageService`) zu
+einer eigenständigen, durchsuchbaren Verwaltung – **keine** neue Entity,
+**keine** neue IndexedDB-Version, **keine** Many-to-Many-Verknüpfung.
+`Bill.documentId`/`Contract.documentId`/`WasteCost.documentId` bleiben die
+einzige Verknüpfungsart (1:1 pro Dokument).
+
+**Architektur**: `UI (DocumentsPage/DocumentDetailPage) → domain/usecases/
+documents.ts → documentRepository/documentStorageService → IndexedDB
+(documents-Store für Metadaten, documentFiles-Store für Blobs)`. Wie bei
+Contracts/Bills gibt es keine eigene "Service"-Klasse, sondern ein
+Use-Case-Modul aus Funktionen – konsistent mit dem übrigen Projektstil.
+
+**Reference-Management (zentral, `documents.ts`)**:
+`getLinkedEntity()`/`isDocumentReferenced()` prüfen `Bill`/`Contract`/
+`WasteCost` generisch auf ein passendes `documentId` (ein Dokument ist in V1
+nie an mehr als eine Entity gebunden, die Prüfung deckt trotzdem den
+generischen Fall ab). `deleteDocumentIfUnreferenced()` wird beim Löschen
+der **referenzierenden** Entity aufgerufen (`deleteBillWithItems`,
+`deleteContract`) – vorher bestand hier für Bills sogar eine Lücke (ein
+gelöschtes Bill ließ sein Dokument verwaist zurück), die mit dieser
+zentralen Funktion behoben wurde. `deleteDocumentAndClearReferences()` ist
+der Gegenpart für das explizite Löschen **eines Dokuments** direkt in der
+Dokumentenverwaltung (`/dokumente/:id`) – hier wird das Dokument immer
+gelöscht, aber die verweisende Entity wird um `documentId` bereinigt (bei
+Bills zusätzlich `ocrStatus` zurückgesetzt), damit nie eine tote Referenz
+übrig bleibt.
+
+**Contract-Dokumente**: `Contract.documentId` war als Feld bereits
+vorhanden, aber ungenutzt – es gab keinen Upload-Weg. Phase 7 ergänzt
+`setContractDocument()`/`removeContractDocument()` sowie einen Upload-/
+Anzeige-/Löschen-Block auf `ContractDetailPage` (analog zum bestehenden
+Bill-Dokument-Block). `ContractInput` bekam bewusst **kein** `documentId`-
+Feld – ein Dokument wird über die Detailseite angehängt, nicht über das
+Formular, damit ein normaler `updateContract()`-Aufruf ein bereits
+angehängtes Dokument nie versehentlich überschreibt
+(`buildCandidate()` übernimmt `documentId` explizit vom bestehenden
+Datensatz).
+
+**WasteCost**: `WasteCost.documentId` existiert im Domain-Modell, aber es
+gibt in Phase 7 weiterhin **keine** WasteCost-UI (`features/waste/` bleibt
+`.gitkeep`) – das Anlegen eines Aufbaus einer vollständigen
+Müllkosten-Verwaltung wäre eine eigene, hier nicht beauftragte Phase. Die
+generische Referenzprüfung deckt WasteCost dennoch mit ab, falls/wenn diese
+UI einmal entsteht.
+
+**Checksum**: `calculateChecksum()` nutzt die im Browser eingebaute Web
+Crypto API (`crypto.subtle.digest('SHA-256', …)`) – keine zusätzliche
+Abhängigkeit. Wird beim Speichern (`saveDocumentFile`) und beim Ersetzen
+(`replaceDocumentFile`) gesetzt.
+
+**Datei ersetzen** (`replaceDocumentFile`): speichert die neue Datei unter
+einem neuen Storage-Key, aktualisiert Metadaten/Checksum, setzt
+`ocrStatus` auf `not_started` zurück (der bisherige OCR-Text bezieht sich
+nicht mehr auf den neuen Inhalt) und löscht den alten Blob erst, **nachdem**
+der neue Datensatz sicher gespeichert ist – ein Fehler mittendrin lässt nie
+ein Dokument ganz ohne lesbare Datei zurück.
+
+**Liste/Suche/Filter/Sortierung** (`/dokumente`): `listDocumentsOverview()`
+lädt alle Dokument-**Metadaten** (nie die Blobs – die Liste bleibt schnell
+auch bei vielen/großen Dateien) einmal zusammen mit ihrer verknüpften
+Entity. Suche/Filter/Sortierung (`features/documents/documentFilters.ts`)
+sind reine, lokale Funktionen über die bereits geladene Liste – keine
+externe Suche, keine wiederholten IndexedDB-Zugriffe pro Tastenanschlag.
+
+**Detailseite** (`/dokumente/:id`): zeigt Metadaten, OCR-Status/-Text und
+die verknüpfte Entity (klickbar zu Bill/Contract, sofern eine Detailseite
+existiert – für WasteCost aktuell nicht, siehe oben). Die Vorschau
+(`DocumentViewer`, seit Phase 4 vorhanden) lädt den Blob erst bei Klick auf
+„Vorschau anzeigen" – nie automatisch beim Öffnen der Seite.
+
+**Teststrategie**: `documents.test.ts` (Checksum, Replace, Validierung),
+`documentLifecycle.usecase.test.ts` (Reference-Detection, Cascade-Löschung
+bei Bill/Contract, `deleteDocumentAndClearReferences`, Overview-Listing),
+`documents.ui.test.tsx` (Liste, Suche, Filter, Detail, Löschen mit/ohne
+Bestätigung), plus Erweiterungen in `contracts.ui.test.tsx`/
+`bills.ui.test.tsx`/`DashboardPage.test.tsx`/`SettingsPage.test.tsx` für
+die jeweiligen Integrationen.
 
 ### Sync
 

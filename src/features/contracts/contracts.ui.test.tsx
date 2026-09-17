@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/feedback/ToastProvider'
 import { deleteDatabase } from '../../database/database'
 import { createContract, listContracts } from '../../domain/usecases/contracts'
+import { ContractDetailPage } from './ContractDetailPage'
 import { ContractFormPage } from './ContractFormPage'
 import { ContractsPage } from './ContractsPage'
+import { DocumentDetailPage } from '../documents/DocumentDetailPage'
 
 beforeEach(async () => {
   await deleteDatabase()
@@ -19,6 +21,8 @@ function renderContractsApp(initialPath = '/vertraege') {
           <Route path="/vertraege" element={<ContractsPage />} />
           <Route path="/vertraege/neu" element={<ContractFormPage mode="create" />} />
           <Route path="/vertraege/:id/bearbeiten" element={<ContractFormPage mode="edit" />} />
+          <Route path="/vertraege/:id" element={<ContractDetailPage />} />
+          <Route path="/dokumente/:id" element={<DocumentDetailPage />} />
         </Routes>
       </MemoryRouter>
     </ToastProvider>,
@@ -167,5 +171,80 @@ describe('ContractFormPage (edit)', () => {
       expect(contracts).toHaveLength(1)
       expect(contracts[0]?.monthlyCost).toBe(45)
     })
+  })
+})
+
+describe('ContractDetailPage document attachment', () => {
+  it('uploads a contract document and shows it afterwards', async () => {
+    const created = await createContract({
+      categoryId: 'electricity',
+      provider: 'EnBW',
+      monthlyCost: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: false,
+    })
+
+    renderContractsApp(`/vertraege/${created.id}`)
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Vertragsdokument hochladen')).toBeInTheDocument()
+
+    const file = new File(['content'], 'stromvertrag.pdf', { type: 'application/pdf' })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByText('stromvertrag.pdf')).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: 'In Dokumentenverwaltung öffnen' })).toBeInTheDocument()
+  })
+
+  it('removes a contract document, keeping the contract', async () => {
+    const created = await createContract({
+      categoryId: 'electricity',
+      provider: 'EnBW',
+      monthlyCost: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: false,
+    })
+    const { saveDocumentFile } = await import('../../domain/usecases/documents')
+    const { setContractDocument } = await import('../../domain/usecases/contracts')
+    const doc = await saveDocumentFile(new File(['content'], 'stromvertrag.pdf', { type: 'application/pdf' }), 'contract')
+    await setContractDocument(created.id, doc.id)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderContractsApp(`/vertraege/${created.id}`)
+    await waitForLoadingToFinish()
+
+    await waitFor(() => expect(screen.getByText('stromvertrag.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Dokument löschen' }))
+
+    await waitFor(() => expect(screen.getByText('Vertragsdokument hochladen')).toBeInTheDocument())
+    const contracts = await listContracts()
+    expect(contracts).toHaveLength(1)
+    confirmSpy.mockRestore()
+  })
+
+  it('links to the document management page for an attached document', async () => {
+    const created = await createContract({
+      categoryId: 'electricity',
+      provider: 'EnBW',
+      monthlyCost: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: false,
+    })
+    const { saveDocumentFile } = await import('../../domain/usecases/documents')
+    const { setContractDocument } = await import('../../domain/usecases/contracts')
+    const doc = await saveDocumentFile(new File(['content'], 'stromvertrag.pdf', { type: 'application/pdf' }), 'contract')
+    await setContractDocument(created.id, doc.id)
+
+    renderContractsApp(`/vertraege/${created.id}`)
+    await waitForLoadingToFinish()
+
+    await waitFor(() => expect(screen.getByText('stromvertrag.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('link', { name: 'In Dokumentenverwaltung öffnen' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'stromvertrag.pdf' })).toBeInTheDocument())
   })
 })

@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/feedback/ToastProvider'
 import { deleteDatabase } from '../../database/database'
 import { createBillWithItems, listBillItems, listBills } from '../../domain/usecases/bills'
+import { saveDocumentFile } from '../../domain/usecases/documents'
+import { DocumentDetailPage } from '../documents/DocumentDetailPage'
+import { BillDetailPage } from './BillDetailPage'
 import { BillFormPage } from './BillFormPage'
 import { BillsPage } from './BillsPage'
 
@@ -19,6 +22,8 @@ function renderBillsApp(initialPath = '/abrechnungen') {
           <Route path="/abrechnungen" element={<BillsPage />} />
           <Route path="/abrechnungen/neu" element={<BillFormPage mode="create" />} />
           <Route path="/abrechnungen/:id/bearbeiten" element={<BillFormPage mode="edit" />} />
+          <Route path="/abrechnungen/:id" element={<BillDetailPage />} />
+          <Route path="/dokumente/:id" element={<DocumentDetailPage />} />
         </Routes>
       </MemoryRouter>
     </ToastProvider>,
@@ -146,5 +151,26 @@ describe('BillFormPage (edit)', () => {
       expect(items).toHaveLength(1)
       expect(items[0]?.amount).toBe(150)
     })
+  })
+})
+
+describe('BillDetailPage document integration', () => {
+  it('links the attached document to the document management page', async () => {
+    const document = await saveDocumentFile(new File(['x'], 'nebenkosten.pdf', { type: 'application/pdf' }), 'bill')
+    const { bill } = await createBillWithItems({
+      type: 'annual_statement',
+      year: 2025,
+      advancePayments: 0,
+      documentId: document.id,
+      items: [{ categoryId: 'heating', description: 'Heizung', amount: 100 }],
+    })
+
+    renderBillsApp(`/abrechnungen/${bill.id}`)
+    await waitForLoadingToFinish()
+
+    await waitFor(() => expect(screen.getByText('nebenkosten.pdf')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('link', { name: 'In Dokumentenverwaltung öffnen' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'nebenkosten.pdf' })).toBeInTheDocument())
   })
 })
