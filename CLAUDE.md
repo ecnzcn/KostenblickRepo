@@ -89,6 +89,13 @@ src/
 Leere Ordner enthalten vorerst eine `.gitkeep`-Datei, bis sie in einer
 späteren Phase befüllt werden.
 
+Seit Phase 4 sind `services/ocr/` und `services/storage/` befüllt (siehe
+OCR-Abschnitt unten). Der Import-Workflow selbst liegt bewusst unter
+`features/bills/import/`, nicht unter `features/documents/` (weiterhin
+`.gitkeep`) – er ist inhaltlich ein Bill-Feature (erzeugt am Ende eine
+`Bill`), das Dokumente nur als Nebenprodukt mitführt; `features/documents/`
+bleibt für eine spätere, bill-unabhängige Dokumentenverwaltung reserviert.
+
 ## Domain Models
 
 Mindestens folgende Entities:
@@ -112,7 +119,7 @@ Unterstützte Einheiten: `days`, `weeks`, `months`, `years`. Die Berechnung
 wird zentral in `domain/usecases` implementiert, getestet und **nicht** in
 einer React-Komponente dupliziert.
 
-### OCR
+### OCR & Dokument-Import (Phase 4)
 
 OCR-Ergebnisse sind zunächst **Vorschläge**. Kein automatisch erkannter Wert
 darf ohne Review-Mechanismus als endgültig gelten. Jeder erkannte Wert
@@ -120,9 +127,56 @@ benötigt `confidence`, `sourceText`, `manuallyVerified`. Bei niedriger
 Confidence muss die UI eine manuelle Prüfung verlangen.
 
 Die UI kommuniziert ausschließlich über die `OCRService`-Schnittstelle
-(`extractText`, `analyzeDocument`, `extractBillData`,
-`calculateConfidence`). Die konkrete OCR-Implementierung muss austauschbar
-sein.
+(`src/services/ocr/OCRService.ts`): `extractText`, `analyzeDocument`,
+`extractBillData`. `MockOCRService` (`src/services/ocr/MockOCRService.ts`)
+ist die aktuelle, klar als Mock dokumentierte Implementierung – sie liest
+keine echten Dateiinhalte, sondern liefert einen festen, plausiblen
+deutschen Abrechnungstext, damit der komplette Import-Workflow entwickel-
+und testbar ist, bevor ein echter Provider (On-Device Vision, Cloud-API,
+eigenes Backend) angebunden wird. Ein Wechsel betrifft ausschließlich die
+`ocrService`-Instanz in `MockOCRService.ts`; kein Aufrufer ändert sich.
+(Abweichung von der ursprünglichen Planung: Es gibt keine separate
+`calculateConfidence`-Methode auf `OCRService` – Confidence-Werte kommen
+immer vom Provider selbst; ihre *Interpretation* ist zentral in
+`src/constants/confidence.ts` (`getConfidenceLevel`,
+`CONFIDENCE_THRESHOLDS`: hoch ≥ 0.90, mittel ≥ 0.70, sonst niedrig) und dort
+für UI und Use Cases gemeinsam verfügbar.)
+
+**Bill Parser** (`domain/usecases/billParser.ts`, `parseBillText`): reine,
+providerunabhängige Funktion, die rohen OCR-Text in ein `ParsedBill`
+(`domain/models/ocr.ts`) überführt – deutsche Beträge (`1.234,56 €`,
+`1234,56`, …) und Labels (Gesamtkosten/Gesamt/Summe/Betriebskosten/
+Nebenkosten, Vorauszahlungen/Vorauszahlung) werden zeilenweise gesucht, ohne
+ein festes Layout anzunehmen. Kategorie-Zuordnung läuft über ein
+Keyword→Category-Mapping, das ausschließlich gegen die tatsächlich
+vorhandenen `Category`-IDs (aus `categoryRepository`) validiert wird, mit
+Fallback auf `other` bei geringer Sicherheit.
+
+**Dokument-Speicherung**: `DocumentStorageService`
+(`src/services/storage/DocumentStorageService.ts`) kapselt, *wo* die rohen
+Bytes eines importierten Dokuments liegen (`save`/`get`/`delete`).
+`IndexedDbDocumentStorageService` ist die V1-Implementierung – Blobs liegen
+in einem eigenen `documentFiles`-Object-Store (Schema-Version 2), getrennt
+vom `documents`-Store, der nur Metadaten (`Document`-Entity) hält. So landen
+nie Base64-/Blob-Daten in normalen Entity-Feldern, und eine spätere
+Cloud-Anbindung ersetzt nur die Storage-Implementierung.
+
+**Review & Persistenz**: Der Import-Workflow (`src/features/bills/import/`,
+Route `/abrechnungen/import`) läuft über
+Select → Processing (indeterminate, keine Fake-Prozentanzeige) → Review →
+Speichern. Vor dem expliziten Klick auf „Abrechnung speichern" existiert
+keine fertige `Bill` – nur das `Document` wird vorab gespeichert und bei
+Abbruch wieder gelöscht. Manuelle Korrektur einer erkannten
+Position/eines Feldes setzt `confidence = 1` und `manuallyVerified = true`
+(zentral in `ImportItemRow`/`importTypes.ts`). Die Konsistenzprüfung
+(Summe der Kostenpositionen vs. erkannte Gesamtsumme) sowie
+Nachzahlung/Guthaben nutzen ausschließlich die bestehende zentrale Logik aus
+`domain/usecases/bills.ts` (`sumBillItems`, `calculateBillBalance`) – keine
+Neuimplementierung in der UI. `BillInput`/`BillItemInput` wurden minimal um
+optionale `documentId`/`confidence`/`sourceText`/`manuallyVerified` erweitert
+(Default weiterhin „vollständig bestätigt" für manuelle Eingabe), sodass
+`createBillWithItems` für beide Wege (manuell und Import) dieselbe,
+einmal getestete Persistenz-Logik nutzt.
 
 ### Statistik
 
