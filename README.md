@@ -9,10 +9,12 @@ später cloud-synchronisierbar.
 > Abrechnungen per PDF/Foto mit OCR-Vorschlägen zur manuellen Prüfung), das
 > Dashboard, die Statistik-Seite (`/statistik`: Jahres- und
 > Mehrjahresvergleich, Kategorie-Aufschlüsselung, Top-Kostenpositionen,
-> monatliche Entwicklung soweit Daten das hergeben) sowie automatische
+> monatliche Entwicklung soweit Daten das hergeben), automatische
 > Kündigungsfrist-Erinnerungen (`/erinnerungen`, inkl. lokaler
-> Benachrichtigungen) sind nutzbar. Echte Cloud-Synchronisierung folgt in
-> weiteren Phasen – siehe [`CLAUDE.md`](./CLAUDE.md).
+> Benachrichtigungen) sowie eine zentrale Dokumentenverwaltung
+> (`/dokumente`: Suche, Filter, Vorschau, Verknüpfung zu Abrechnung/Vertrag)
+> sind nutzbar. Echte Cloud-Synchronisierung folgt in weiteren Phasen –
+> siehe [`CLAUDE.md`](./CLAUDE.md).
 
 ## Features
 
@@ -38,6 +40,10 @@ Phasenplan):
   sind – keine erfundene Verteilung), Mehrjahresvergleich; Bill-Gesamtsumme
   und Summe der Kostenpositionen werden nie doppelt gezählt, eine Differenz
   wird transparent angezeigt statt still korrigiert
+- Zentrale Dokumentenverwaltung (`/dokumente`): alle Rechnungen, Verträge
+  und sonstigen Unterlagen an einem Ort, mit Suche, Filter nach Typ/
+  OCR-Status, Sortierung, PDF-/Bild-Vorschau, Datei ersetzen und
+  Verknüpfung zur zugehörigen Abrechnung/zum Vertrag
 - Offline-First mit IndexedDB als primärer Datenquelle
 - Sync-Abstraktion (V1: lokaler Mock, Last-Write-Wins-Konfliktstrategie)
 
@@ -96,6 +102,27 @@ einsehbar.
   App-Start angefragt, sondern nur über einen expliziten Button in den
   Einstellungen - die App funktioniert vollständig, auch ohne dass
   Benachrichtigungen erlaubt werden.
+
+## Dokumentenverwaltung
+
+Alle importierten/angehängten Dateien (Abrechnungen, Vertragsdokumente,
+sonstige Unterlagen) sind zentral unter `/dokumente` einsehbar, erreichbar
+über „Mehr" → Dokumente.
+
+- **Liste**: Suche (Dateiname, erkannter OCR-Text, verknüpfte Abrechnung/
+  verknüpfter Vertrag), Filter nach Dokumenttyp und OCR-Status, Sortierung
+  (neueste/älteste zuerst, Dateiname, Größe). Die Liste lädt dabei nur
+  Metadaten - nie die eigentlichen Dateiinhalte.
+- **Detailseite**: Metadaten, OCR-Status/-Text, Verknüpfung zur Abrechnung
+  oder zum Vertrag (anklickbar), Vorschau (PDF/Bild, erst bei Klick auf
+  „Vorschau anzeigen" geladen), Herunterladen, Datei ersetzen, Dokument
+  löschen (mit Warnhinweis, falls es noch verknüpft ist).
+- Wird eine Abrechnung oder ein Vertrag gelöscht, wird ihr Dokument nur
+  mitgelöscht, wenn keine andere Stelle mehr darauf verweist - so bleiben
+  nie verwaiste Dateien zurück.
+- Verträge können nachträglich über die Vertrags-Detailseite ein
+  Vertragsdokument erhalten (Upload direkt dort, keine separate
+  Import-Maske nötig).
 
 ## Lokale Entwicklung
 

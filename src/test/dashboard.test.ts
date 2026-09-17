@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   getCostsByCategory,
   getDashboardData,
+  getDocumentsSummary,
   getLatestBill,
   getMonthlyCosts,
   getUpcomingContractDeadlines,
@@ -12,8 +13,9 @@ import {
   billRepository,
   contractRepository,
   costEntryRepository,
+  documentRepository,
 } from '../domain/repositories/indexedDbRepositories'
-import type { Bill, Category, Contract, CostEntry } from '../domain/models/entities'
+import type { Bill, Category, Contract, CostEntry, Document } from '../domain/models/entities'
 
 const syncBase = {
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -56,6 +58,19 @@ const bill = (overrides: Partial<Bill> = {}): Bill => ({
   advancePayments: 2302.2,
   balance: 184.2,
   balanceType: 'payment_due',
+  ocrStatus: 'not_started',
+  ...overrides,
+})
+
+const document = (overrides: Partial<Document> = {}): Document => ({
+  ...syncBase,
+  id: 'doc-1',
+  userId: 'u1',
+  type: 'other',
+  filename: 'doc.pdf',
+  mimeType: 'application/pdf',
+  size: 100,
+  storagePath: 'storage-1',
   ocrStatus: 'not_started',
   ...overrides,
 })
@@ -152,6 +167,22 @@ describe('getLatestBill', () => {
   })
 })
 
+describe('getDocumentsSummary', () => {
+  it('counts total documents and how many need review', () => {
+    const documents = [
+      document({ id: 'd1', ocrStatus: 'verified' }),
+      document({ id: 'd2', ocrStatus: 'needs_review' }),
+      document({ id: 'd3', ocrStatus: 'needs_review' }),
+      document({ id: 'd4', ocrStatus: 'not_started' }),
+    ]
+    expect(getDocumentsSummary(documents)).toEqual({ total: 4, needsReview: 2 })
+  })
+
+  it('returns zeroes for an empty list', () => {
+    expect(getDocumentsSummary([])).toEqual({ total: 0, needsReview: 0 })
+  })
+})
+
 describe('getDashboardData (integration against IndexedDB)', () => {
   beforeEach(async () => {
     await deleteDatabase()
@@ -166,6 +197,7 @@ describe('getDashboardData (integration against IndexedDB)', () => {
     expect(data.categoryCosts).toEqual([])
     expect(data.upcomingContracts).toEqual([])
     expect(data.latestBill).toBeUndefined()
+    expect(data.documentsSummary).toEqual({ total: 0, needsReview: 0 })
   })
 
   it('aggregates real repository data', async () => {
@@ -173,6 +205,7 @@ describe('getDashboardData (integration against IndexedDB)', () => {
     await costEntryRepository.save(costEntry({ id: 'ce-b', date: '2025-09-01T00:00:00.000Z', amount: 100 }))
     await contractRepository.save(contract({ calculatedCancellationDate: '2026-12-01T00:00:00.000Z' }))
     await billRepository.save(bill())
+    await documentRepository.save(document({ id: 'd1', ocrStatus: 'needs_review' }))
 
     const data = await getDashboardData(new Date('2026-09-16T00:00:00.000Z'))
     expect(data.currentMonthCost).toBe(200)
@@ -181,5 +214,6 @@ describe('getDashboardData (integration against IndexedDB)', () => {
     expect(data.currentYearChangePercent).toBe(100)
     expect(data.upcomingContracts).toHaveLength(1)
     expect(data.latestBill?.billId).toBe('b-1')
+    expect(data.documentsSummary).toEqual({ total: 1, needsReview: 1 })
   })
 })

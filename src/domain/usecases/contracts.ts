@@ -4,6 +4,7 @@ import { roundToCents } from '../../utils/money'
 import type { CancellationUnit, Contract } from '../models/entities'
 import { contractRepository } from '../repositories/indexedDbRepositories'
 import { calculateCancellationDate } from './cancellationDate'
+import { deleteDocumentIfUnreferenced, getDocument } from './documents'
 import { generateContractReminders, removeContractReminders } from './reminders/generateContractReminders'
 import { getEnabledReminderOffsets } from './reminders/reminderSettings'
 import { validateContract } from './validation'
@@ -52,6 +53,11 @@ function buildCandidate(id: string, input: ContractInput, existing?: Contract): 
     autoRenewal: input.autoRenewal,
     reminderEnabled: input.reminderEnabled,
     notes: input.notes,
+    // ContractInput has no documentId field - a contract's document is
+    // attached/removed separately (see setContractDocument /
+    // removeContractDocument), so a plain create/update must never wipe an
+    // already-attached document out from under it.
+    documentId: existing?.documentId,
   }
 }
 
@@ -86,8 +92,12 @@ export async function updateContract(id: string, input: ContractInput): Promise<
 }
 
 export async function deleteContract(id: string): Promise<void> {
+  const existing = await contractRepository.getById(id)
   await contractRepository.delete(id)
   await removeContractReminders(id)
+  // Deleted after the contract itself, so the reference check below no
+  // longer sees this contract as still holding the document.
+  await deleteDocumentIfUnreferenced(existing?.documentId)
 }
 
 export async function getContract(id: string): Promise<Contract | undefined> {
@@ -96,4 +106,40 @@ export async function getContract(id: string): Promise<Contract | undefined> {
 
 export async function listContracts(): Promise<Contract[]> {
   return contractRepository.getAll()
+}
+
+/** Attaches an already-saved Document (see saveDocumentFile) to a
+ * contract - kept separate from update Contract() since attaching a
+ * document has nothing to do with the contract's own fields/validation and
+ * must not trigger a reminder recalculation. Validates that both the
+ * contract and the document actually exist before linking them, so this
+ * can never point a contract at a dangling documentId. If the contract
+ * already had a *different* document attached, that previous document is
+ * reference-checked for cleanup afterwards (deleted only if nothing else
+ * references it) - re-attaching never leaves an orphaned document behind,
+ * and never deletes a document that's still needed elsewhere. */
+export async function setContractDocument(id: string, documentId: string): Promise<Contract> {
+  const existing = await contractRepository.getById(id)
+  if (!existing) throw new Error('Vertrag wurde nicht gefunden.')
+  const document = await getDocument(documentId)
+  if (!document) throw new Error('Dokument wurde nicht gefunden.')
+
+  const previousDocumentId = existing.documentId
+  const updated = await contractRepository.save({ ...existing, documentId })
+
+  if (previousDocumentId && previousDocumentId !== documentId) {
+    await deleteDocumentIfUnreferenced(previousDocumentId)
+  }
+  return updated
+}
+
+/** Removes a contract's attached document (Vertragsdokument) and deletes
+ * its bytes/metadata unless another entity still references it - the
+ * contract itself is left untouched. */
+export async function removeContractDocument(contract: Contract): Promise<Contract> {
+  if (!contract.documentId) return contract
+  const documentId = contract.documentId
+  const updated = await contractRepository.save({ ...contract, documentId: undefined })
+  await deleteDocumentIfUnreferenced(documentId)
+  return updated
 }

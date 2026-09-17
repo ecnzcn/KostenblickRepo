@@ -10,7 +10,11 @@ export function SettingsPage() {
       <PageHeader title="Mehr" subtitle="Einstellungen und weitere Bereiche" />
       <div className="flex flex-col gap-4">
         <ul className="divide-y divide-neutral-200 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-          <li className="px-4 py-3 text-sm text-neutral-700">Dokumente</li>
+          <li>
+            <Link to={ROUTES.documents} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
+              Dokumente
+            </Link>
+          </li>
           <li className="px-4 py-3 text-sm text-neutral-700">Müllkosten</li>
           <li>
             <Link to={ROUTES.reminders} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">

@@ -24,6 +24,8 @@ export const ROUTES = {
   costDetailPattern: '/kosten/:id',
   costEditPattern: '/kosten/:id/bearbeiten',
   reminders: '/erinnerungen',
+  documents: '/dokumente',
+  documentDetailPattern: '/dokumente/:id',
   settings: '/mehr',
 } as const
 
@@ -49,6 +51,10 @@ export function costDetailPath(id: string): string {
 
 export function costEditPath(id: string): string {
   return `/kosten/${id}/bearbeiten`
+}
+
+export function documentDetailPath(id: string): string {
+  return `/dokumente/${id}`
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
