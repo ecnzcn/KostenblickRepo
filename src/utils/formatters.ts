@@ -38,3 +38,11 @@ export function formatPercentChange(percent: number): string {
   const sign = percent > 0 ? '+' : ''
   return `${sign}${percent.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} %`
 }
+
+/** Like formatPercentChange, but for a comparison that may have no valid
+ * base (e.g. the previous year was 0 or doesn't exist) - shows "—"
+ * instead of a misleading or NaN/Infinity percentage. */
+export function formatPercentChangeOrDash(percent: number | null | undefined): string {
+  if (percent === null || percent === undefined) return '—'
+  return formatPercentChange(percent)
+}

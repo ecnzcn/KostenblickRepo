@@ -6,10 +6,12 @@ Kündigungsfristen, Erinnerungen und Kostenstatistiken – offlinefähig und
 später cloud-synchronisierbar.
 
 > **Status:** Kosten-, Vertrags- und Abrechnungsverwaltung (inkl. Import von
-> Abrechnungen per PDF/Foto mit OCR-Vorschlägen zur manuellen Prüfung) sowie
-> das Dashboard sind nutzbar. Statistik-Detailauswertungen, Erinnerungen und
-> echte Cloud-Synchronisierung folgen in weiteren Phasen – siehe
-> [`CLAUDE.md`](./CLAUDE.md).
+> Abrechnungen per PDF/Foto mit OCR-Vorschlägen zur manuellen Prüfung), das
+> Dashboard sowie die Statistik-Seite (`/statistik`: Jahres- und
+> Mehrjahresvergleich, Kategorie-Aufschlüsselung, Top-Kostenpositionen,
+> monatliche Entwicklung soweit Daten das hergeben) sind nutzbar.
+> Erinnerungen und echte Cloud-Synchronisierung folgen in weiteren Phasen –
+> siehe [`CLAUDE.md`](./CLAUDE.md).
 
 ## Features
 
@@ -26,7 +28,12 @@ Phasenplan):
 - Erinnerungen vor Kündigungsterminen (90/30/7/1 Tage, konfigurierbar)
 - Dashboard mit monatlichen/jährlichen Gesamtkosten und
   Kategorie-Auswertung
-- Statistiken mit Balken- und Liniendiagrammen
+- Statistik-Seite (`/statistik`): Gesamtkosten und Vorjahresvergleich pro
+  Jahr, Kosten nach Kategorie, wichtigste Kostenpositionen, monatliche
+  Entwicklung (nur wenn Abrechnungen tatsächlich einem Monat zuordenbar
+  sind – keine erfundene Verteilung), Mehrjahresvergleich; Bill-Gesamtsumme
+  und Summe der Kostenpositionen werden nie doppelt gezählt, eine Differenz
+  wird transparent angezeigt statt still korrigiert
 - Offline-First mit IndexedDB als primärer Datenquelle
 - Sync-Abstraktion (V1: lokaler Mock, Last-Write-Wins-Konfliktstrategie)
 
