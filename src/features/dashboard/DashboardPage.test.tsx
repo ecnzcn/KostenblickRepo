@@ -137,4 +137,13 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: '+ Vertrag' })).toHaveAttribute('href', '#/vertraege/neu')
     expect(screen.getByRole('link', { name: 'Kosten erfassen' })).toHaveAttribute('href', '#/kosten/neu')
   })
+
+  it('links "Nächste Vertragsfristen" to the reminders page, not the contracts list', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Nächste Vertragsfristen')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Alle Erinnerungen' })).toHaveAttribute('href', '#/erinnerungen')
+  })
 })

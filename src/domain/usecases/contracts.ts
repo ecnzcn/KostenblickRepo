@@ -4,6 +4,8 @@ import { roundToCents } from '../../utils/money'
 import type { CancellationUnit, Contract } from '../models/entities'
 import { contractRepository } from '../repositories/indexedDbRepositories'
 import { calculateCancellationDate } from './cancellationDate'
+import { generateContractReminders, removeContractReminders } from './reminders/generateContractReminders'
+import { getEnabledReminderOffsets } from './reminders/reminderSettings'
 import { validateContract } from './validation'
 
 export interface ContractInput {
@@ -63,7 +65,9 @@ export function validateContractInput(input: ContractInput): string[] {
 export async function createContract(input: ContractInput): Promise<Contract> {
   const errors = validateContractInput(input)
   if (errors.length > 0) throw new Error(errors.join(' '))
-  return contractRepository.save(buildCandidate(generateId(), input))
+  const saved = await contractRepository.save(buildCandidate(generateId(), input))
+  await generateContractReminders(saved, getEnabledReminderOffsets())
+  return saved
 }
 
 export async function updateContract(id: string, input: ContractInput): Promise<Contract> {
@@ -73,11 +77,17 @@ export async function updateContract(id: string, input: ContractInput): Promise<
   const existing = await contractRepository.getById(id)
   if (!existing) throw new Error('Vertrag wurde nicht gefunden.')
 
-  return contractRepository.save(buildCandidate(id, input, existing))
+  const saved = await contractRepository.save(buildCandidate(id, input, existing))
+  // Reconciles (not replaces) the contract's reminders against its
+  // possibly-changed cancellation date - see generateContractReminders for
+  // why this is safe to call on every update without creating duplicates.
+  await generateContractReminders(saved, getEnabledReminderOffsets())
+  return saved
 }
 
 export async function deleteContract(id: string): Promise<void> {
   await contractRepository.delete(id)
+  await removeContractReminders(id)
 }
 
 export async function getContract(id: string): Promise<Contract | undefined> {

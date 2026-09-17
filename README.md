@@ -7,11 +7,12 @@ später cloud-synchronisierbar.
 
 > **Status:** Kosten-, Vertrags- und Abrechnungsverwaltung (inkl. Import von
 > Abrechnungen per PDF/Foto mit OCR-Vorschlägen zur manuellen Prüfung), das
-> Dashboard sowie die Statistik-Seite (`/statistik`: Jahres- und
+> Dashboard, die Statistik-Seite (`/statistik`: Jahres- und
 > Mehrjahresvergleich, Kategorie-Aufschlüsselung, Top-Kostenpositionen,
-> monatliche Entwicklung soweit Daten das hergeben) sind nutzbar.
-> Erinnerungen und echte Cloud-Synchronisierung folgen in weiteren Phasen –
-> siehe [`CLAUDE.md`](./CLAUDE.md).
+> monatliche Entwicklung soweit Daten das hergeben) sowie automatische
+> Kündigungsfrist-Erinnerungen (`/erinnerungen`, inkl. lokaler
+> Benachrichtigungen) sind nutzbar. Echte Cloud-Synchronisierung folgt in
+> weiteren Phasen – siehe [`CLAUDE.md`](./CLAUDE.md).
 
 ## Features
 
@@ -25,7 +26,10 @@ Phasenplan):
 - Müllkosten-Verwaltung
 - Strom-, Internet- und Telekommunikationsverträge inkl. automatischer
   Kündigungsfrist-Berechnung
-- Erinnerungen vor Kündigungsterminen (90/30/7/1 Tage, konfigurierbar)
+- Vertragsstatus (Aktiv/Bald fällig/Dringend/Abgelaufen) und automatische
+  Erinnerungen vor Kündigungsterminen (90/30/7/1 Tage, konfigurierbar) mit
+  eigener Erinnerungsseite (`/erinnerungen`) und optionalen lokalen
+  Benachrichtigungen
 - Dashboard mit monatlichen/jährlichen Gesamtkosten und
   Kategorie-Auswertung
 - Statistik-Seite (`/statistik`): Gesamtkosten und Vorjahresvergleich pro
@@ -71,6 +75,27 @@ externen OCR-Anbieter (Google, Microsoft, OpenAI, AWS, Azure, …) gesendet.
   können eine manuelle Korrektur erfordern. **Erkannte Werte sind immer nur
   Vorschläge** - sie müssen vor dem Speichern in der Review-Ansicht geprüft
   und bestätigt werden, bevor daraus eine Abrechnung wird.
+
+## Vertragserinnerungen & Benachrichtigungen
+
+Für jeden Vertrag mit Vertragsende und Kündigungsfrist werden automatisch
+Erinnerungen berechnet (Standard: 90/30/7/1 Tage vor der Kündigungsfrist,
+konfigurierbar unter „Mehr" → Vertragserinnerungen) und sind unter
+`/erinnerungen` gruppiert nach Überfällig/Heute/In 7 Tagen/Später
+einsehbar.
+
+- Beim Öffnen der App wird geprüft, ob Erinnerungen fällig/überfällig
+  sind, und - sofern Benachrichtigungen aktiviert wurden - eine lokale
+  Browser-Benachrichtigung versucht.
+- **Grenzen**: Eine reine lokale PWA kann eine zeitgesteuerte
+  Benachrichtigung **nicht garantieren**, ohne dass die App zwischenzeitlich
+  geöffnet wird - es gibt (bewusst) keinen Push-Backend-Server in Phase 6.
+  Fällige Erinnerungen bleiben unabhängig davon jederzeit unter
+  `/erinnerungen` sichtbar.
+- Die Berechtigung für Benachrichtigungen wird nie automatisch beim
+  App-Start angefragt, sondern nur über einen expliziten Button in den
+  Einstellungen - die App funktioniert vollständig, auch ohne dass
+  Benachrichtigungen erlaubt werden.
 
 ## Lokale Entwicklung
 
@@ -142,8 +167,8 @@ UI → Feature Logic → Use Case → Repository → Data Source (IndexedDB / AP
 src/
 ├── app/            Routing- und App-Shell-Konfiguration
 ├── components/     Wiederverwendbare UI-Bausteine (Layout, Icons, …)
-├── features/        dashboard, statistics, bills, contracts, waste,
-│                     documents, settings
+├── features/        dashboard, statistics, bills, contracts, reminders,
+│                     waste, documents, settings
 ├── domain/          models, repositories, usecases
 ├── services/         ocr, sync, notifications, storage
 ├── database/        IndexedDB-Setup

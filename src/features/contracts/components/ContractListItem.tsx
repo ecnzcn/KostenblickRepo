@@ -2,6 +2,7 @@ import { ItemActions } from '../../../components/ItemActions'
 import type { Contract } from '../../../domain/models/entities'
 import { daysUntil } from '../../../utils/date'
 import { formatCurrency, formatDate } from '../../../utils/formatters'
+import { ContractStatusBadge } from './ContractStatusBadge'
 
 interface ContractListItemProps {
   contract: Contract
@@ -16,12 +17,17 @@ export function ContractListItem({ contract, onOpen, onEdit, onDelete }: Contrac
   return (
     <li className="rounded-2xl border border-neutral-200 bg-white p-4">
       <button type="button" onClick={onOpen} className="w-full text-left">
-        <p className="text-sm font-medium text-neutral-900">{contract.provider}</p>
-        {contract.tariff ? <p className="text-xs text-neutral-500">{contract.tariff}</p> : null}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-neutral-900">{contract.provider}</p>
+            {contract.tariff ? <p className="text-xs text-neutral-500">{contract.tariff}</p> : null}
+          </div>
+          <ContractStatusBadge contract={contract} />
+        </div>
         <p className="mt-1 text-sm text-neutral-700">{formatCurrency(contract.monthlyCost)}/Monat</p>
         {contract.calculatedCancellationDate ? (
           <div className="mt-2 text-xs text-neutral-500">
-            <p>Kündigung: {formatDate(contract.calculatedCancellationDate)}</p>
+            <p>Kündigung bis: {formatDate(contract.calculatedCancellationDate)}</p>
             {remaining !== undefined && remaining >= 0 ? <p>Noch {remaining} Tage</p> : null}
           </div>
         ) : null}

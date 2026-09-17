@@ -13,10 +13,14 @@ import { CostDetailPage } from '../features/costs/CostDetailPage'
 import { CostFormPage } from '../features/costs/CostFormPage'
 import { CostsPage } from '../features/costs/CostsPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
+import { RemindersPage } from '../features/reminders/RemindersPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { StatisticsPage } from '../features/statistics/StatisticsPage'
+import { useDueReminderNotifications } from '../hooks/useDueReminderNotifications'
 
 export function App() {
+  useDueReminderNotifications()
+
   return (
     <ToastProvider>
       <AppLayout>
@@ -39,6 +43,8 @@ export function App() {
           <Route path={ROUTES.costsNew} element={<CostFormPage mode="create" />} />
           <Route path={ROUTES.costEditPattern} element={<CostFormPage mode="edit" />} />
           <Route path={ROUTES.costDetailPattern} element={<CostDetailPage />} />
+
+          <Route path={ROUTES.reminders} element={<RemindersPage />} />
 
           <Route path={ROUTES.settings} element={<SettingsPage />} />
           <Route path="*" element={<Navigate to={ROUTES.home} replace />} />

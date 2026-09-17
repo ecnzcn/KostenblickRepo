@@ -10,7 +10,7 @@ interface UpcomingContractsCardProps {
 export function UpcomingContractsCard({ deadlines }: UpcomingContractsCardProps) {
   return (
     <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-      <h2 className="text-base font-semibold text-neutral-900">Vertragsfristen</h2>
+      <h2 className="text-base font-semibold text-neutral-900">Nächste Vertragsfristen</h2>
       {deadlines.length === 0 ? (
         <p className="mt-4 text-sm text-neutral-500">Keine anstehenden Vertragsfristen</p>
       ) : (
@@ -27,10 +27,10 @@ export function UpcomingContractsCard({ deadlines }: UpcomingContractsCardProps)
         </ul>
       )}
       <Link
-        to={ROUTES.contracts}
+        to={ROUTES.reminders}
         className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-accent"
       >
-        Alle Verträge
+        Alle Erinnerungen
       </Link>
     </section>
   )
