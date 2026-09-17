@@ -69,6 +69,25 @@ describe('ContractsPage', () => {
     expect(providers[1]).toBe('E.ON')
   })
 
+  it('shows the computed contract status next to each contract', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      monthlyCost: 40,
+      startDate: '2024-01-01T00:00:00.000Z',
+      endDate: '2026-09-25T00:00:00.000Z',
+      cancellationPeriodValue: 5,
+      cancellationPeriodUnit: 'days',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Dringend')).toBeInTheDocument()
+  })
+
   it('deletes a contract after confirmation', async () => {
     await createContract({
       categoryId: 'internet',

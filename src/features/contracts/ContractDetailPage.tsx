@@ -6,9 +6,11 @@ import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { useToast } from '../../components/feedback/useToast'
 import { contractEditPath, ROUTES } from '../../constants/navigation'
-import type { Contract } from '../../domain/models/entities'
+import type { Contract, Reminder } from '../../domain/models/entities'
 import { deleteContract, getContract } from '../../domain/usecases/contracts'
+import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
 import { formatCurrency, formatDate } from '../../utils/formatters'
+import { ContractStatusBadge } from './components/ContractStatusBadge'
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -32,20 +34,22 @@ export function ContractDetailPage() {
   const { showToast } = useToast()
 
   const [contract, setContract] = useState<Contract | undefined>()
+  const [reminders, setReminders] = useState<Reminder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
   useEffect(() => {
     if (!id) return
     let cancelled = false
-    getContract(id)
-      .then((found) => {
+    Promise.all([getContract(id), listRemindersForContract(id)])
+      .then(([found, foundReminders]) => {
         if (cancelled) return
         if (!found || found.deletedAt) {
           setError(true)
           return
         }
         setContract(found)
+        setReminders(foundReminders)
       })
       .catch(() => {
         if (!cancelled) setError(true)
@@ -76,6 +80,10 @@ export function ContractDetailPage() {
     <>
       <PageHeader title={contract.provider} subtitle={contract.tariff} />
       <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-5 py-4">
+          <p className="text-sm text-neutral-500">Status</p>
+          <ContractStatusBadge contract={contract} />
+        </div>
         <div className="grid grid-cols-2 gap-4 rounded-2xl border border-neutral-200 bg-white p-5">
           <DetailRow label="Monatliche Kosten" value={`${formatCurrency(contract.monthlyCost)}/Monat`} />
           {contract.yearlyCost !== undefined ? (
@@ -93,6 +101,20 @@ export function ContractDetailPage() {
             <DetailRow label="Kündigung bis" value={formatDate(contract.calculatedCancellationDate)} />
           ) : null}
         </div>
+        {reminders.length > 0 ? (
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <p className="text-xs text-neutral-500">Erinnerungen</p>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {reminders.map((reminder) => (
+                <li key={reminder.id} className="flex items-center gap-2 text-sm text-neutral-700">
+                  <span aria-hidden="true">{reminder.status === 'dismissed' ? '✓' : '○'}</span>
+                  <span className="sr-only">{reminder.status === 'dismissed' ? 'Erledigt: ' : 'Offen: '}</span>
+                  {formatDate(reminder.reminderDate)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {contract.notes ? (
           <div className="rounded-2xl border border-neutral-200 bg-white p-5">
             <p className="text-xs text-neutral-500">Notiz</p>

@@ -100,6 +100,10 @@ Seit Phase 5 ist `domain/usecases/statistics/` befüllt (siehe
 „Statistik"-Abschnitt unten für die Architektur- und Datenquellen-
 Entscheidungen).
 
+Seit Phase 6 sind `domain/usecases/reminders/`, `services/notifications/`
+und `features/reminders/` befüllt (siehe „Vertragsmanagement &
+Erinnerungen"-Abschnitt unten).
+
 ## Domain Models
 
 Mindestens folgende Entities:
@@ -382,6 +386,95 @@ Muster); dieselbe Datei enthält auch den IndexedDB-Integrationstest
 mockt die Use-Case-Schicht für UI-Zustände (Loading/Error/Empty/Daten,
 Jahreswechsel); `statisticsPage.integration.test.tsx` prüft den vollen Weg
 IndexedDB-Fixtures → Use Case → gerenderte Seite ohne Mocks.
+
+### Vertragsmanagement & Erinnerungen (Phase 6, `src/domain/usecases/reminders/`)
+
+Erweitert die bestehende Vertragsverwaltung (`domain/usecases/contracts.ts`,
+`features/contracts/`) um eine automatische Erinnerungs-Engine – keine
+zweite Contract-/Reminder-Implementierung, sondern eine Erweiterung der
+bestehenden.
+
+**Vertragsstatus**: zentral in `getContractStatus()`
+(`domain/usecases/reminders/contractStatus.ts`), nie im UI dupliziert.
+Grenzwerte `CONTRACT_URGENT_DAYS = 30` / `CONTRACT_UPCOMING_DAYS = 90`
+(`src/constants/contracts.ts`) sind die einzige Quelle für diese Zahlen.
+`expired` (Frist bereits vorbei, Tage < 0) → `urgent` (0–30 Tage) →
+`upcoming` (31–90 Tage) → `active` (> 90 Tage, oder gar keine
+Kündigungsfrist bekannt).
+
+**Reminder-Engine**: `generateContractReminders()`
+(`domain/usecases/reminders/generateContractReminders.ts`) wird bei jedem
+`createContract`/`updateContract` automatisch aufgerufen (siehe
+`domain/usecases/contracts.ts`) und ist **idempotent** – wiederholtes
+Aufrufen erzeugt nie doppelte Reminder. Sie berechnet die
+90/30/7/1-Tage-Reminder (`calculateReminderDates.ts`, konfigurierbar über
+die Settings, siehe unten) relativ zu `Contract.calculatedCancellationDate`
+und gleicht sie mit den bereits gespeicherten Remindern ab:
+
+- ein noch passender, unveränderter Reminder bleibt unverändert
+- ändert sich das Kündigungsdatum (z. B. durch ein bearbeitetes
+  Vertragsende), wird der bestehende Reminder mit gleichem Intervall **an
+  Ort und Stelle aktualisiert** (gleiche `id`), nie gelöscht und neu
+  angelegt
+- ein nicht mehr benötigtes Intervall (deaktiviert oder Vertrag ohne
+  Kündigungsdatum/Reminder deaktiviert) wird gelöscht
+- ein bereits **erledigter** (`status: 'dismissed'`) Reminder ist
+  historisch und wird von einer Neuberechnung nie angefasst
+
+Beim Löschen eines Vertrags (`deleteContract`) werden über
+`removeContractReminders()` alle zugehörigen Reminder mit gelöscht – keine
+verwaisten Reminder auf `/erinnerungen`.
+
+**Reminder-Identifikation**: `Reminder` bekam ein neues, **optionales**
+Feld `offsetDays` (wie viele Tage vor dem Zieldatum der Reminder feuert) –
+additiv, ohne IndexedDB-Schema-/Versionswechsel (Objektspeicher sind
+schemalos pro Wert; `DATABASE_VERSION` bleibt bei 2). Ältere Datensätze
+ohne dieses Feld funktionieren unverändert weiter (siehe Testfall
+„backward compatibility" in `src/test/reminders.usecase.test.ts`).
+
+**Erinnerungs-Intervalle (Settings)**: welche der vier Standardintervalle
+aktiv sind, wird in `localStorage` gespeichert
+(`domain/usecases/reminders/reminderSettings.ts`), nicht in IndexedDB –
+eine Handvoll Booleans ist keine synchronisationspflichtige Fachdatensicht
+und rechtfertigt keinen eigenen Object Store samt Migration. Fällt auf
+„alle aktiv" zurück, wenn `localStorage` fehlt oder der Wert defekt ist.
+
+**Erinnerungsseite** (`/erinnerungen`, `src/features/reminders/`):
+`getRemindersOverview()` lädt Reminder/Contracts/Categories genau einmal
+und gruppiert in Überfällig/Heute/In 7 Tagen/Später (jeweils
+chronologisch), gefiltert auf nicht-erledigte Reminder mit noch
+existierendem (nicht gelöschtem) Vertrag. „Als erledigt markieren" ruft
+`dismissReminder()`.
+
+**Dashboard**: Die bestehende „Vertragsfristen"-Karte
+(`UpcomingContractsCard`) wurde zu „Nächste Vertragsfristen" umbenannt und
+ihre CTA zeigt jetzt auf `/erinnerungen` statt `/vertraege` – ihre
+Datengrundlage (`getUpcomingContractDeadlines` in
+`domain/usecases/dashboard.ts`, direkt aus `Contract` abgeleitet) blieb
+unverändert. **Wichtig**: Diese Erweiterung rührt die
+`CostEntry`/`Bill`/`BillItem`/Statistics-Pipelines nicht an – siehe den
+PR-#7-Cleanup oben, dieselbe Regel gilt weiterhin.
+
+**Notifications**: `NotificationService`-Abstraktion
+(`src/services/notifications/`, `BrowserNotificationService` als einzige
+Implementierung, analog `activeOcrService.ts`). Eine lokale PWA kann eine
+zeitgesteuerte Zustellung ohne aktive App **nicht zusichern** – deshalb
+prüft `notifyDueReminders()` (`domain/usecases/reminders/
+checkDueReminders.ts`) beim App-Start (`useDueReminderNotifications` in
+`App.tsx`) fällige/überfällige Reminder und versucht eine lokale
+Notification, statt einen nicht einlösbaren Hintergrund-Job zu behaupten.
+Ein erfolgreich benachrichtigter Reminder wird auf `status: 'sent'`
+gesetzt, damit er nicht bei jedem App-Start erneut benachrichtigt. Die
+Berechtigung wird nie automatisch beim Start angefragt, sondern nur über
+einen expliziten Button in den Einstellungen (`NotificationSettings`).
+
+**Teststrategie**: `contractStatus.test.ts`/`calculateReminderDates.test.ts`
+(reine Funktionen, alle Grenzfälle aus der Spezifikation),
+`reminders.usecase.test.ts` (Idempotenz, Contract-Update-Reconciliation,
+Contract-Delete-Cleanup, IndexedDB-Integration, Altdaten-Kompatibilität),
+`checkDueReminders.test.ts` (Notification-Orchestrierung mit einem
+Fake-`NotificationService`), `RemindersPage.test.tsx`/
+`contracts.ui.test.tsx`/`SettingsPage.tsx`-Tests für die UI.
 
 ### Sync
 

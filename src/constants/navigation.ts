@@ -23,6 +23,7 @@ export const ROUTES = {
   costsNew: '/kosten/neu',
   costDetailPattern: '/kosten/:id',
   costEditPattern: '/kosten/:id/bearbeiten',
+  reminders: '/erinnerungen',
   settings: '/mehr',
 } as const
 
