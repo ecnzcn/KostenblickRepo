@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/feedback/ToastProvider'
 import { deleteDatabase } from '../../database/database'
-import { createBillWithItems, listBillItems, listBills } from '../../domain/usecases/bills'
+import { createBillWithItems, getBill, listBillItems, listBills } from '../../domain/usecases/bills'
 import { saveDocumentFile } from '../../domain/usecases/documents'
 import { DocumentDetailPage } from '../documents/DocumentDetailPage'
 import { BillDetailPage } from './BillDetailPage'
@@ -150,6 +150,67 @@ describe('BillFormPage (edit)', () => {
       const items = await listBillItems(bill.id)
       expect(items).toHaveLength(1)
       expect(items[0]?.amount).toBe(150)
+    })
+  })
+})
+
+describe('BillFormPage (edit) - confirmed total amount', () => {
+  async function createConfirmedBill() {
+    return createBillWithItems({
+      type: 'annual_statement',
+      year: 2025,
+      advancePayments: 0,
+      totalAmount: 350,
+      items: [{ categoryId: 'heating', description: 'Heizung', amount: 100 }],
+    })
+  }
+
+  it('shows the confirmed total, live item sum and difference, and keeps it when saving without recalculating', async () => {
+    const { bill } = await createConfirmedBill()
+
+    renderBillsApp(`/abrechnungen/${bill.id}/bearbeiten`)
+    await waitForLoadingToFinish()
+    await screen.findByRole('option', { name: /Heizung/ })
+
+    expect(screen.getByText('Bestätigter Gesamtbetrag')).toBeInTheDocument()
+    expect(screen.getAllByText('350,00 €').length).toBeGreaterThan(0)
+    expect(screen.getByText('Positionssumme')).toBeInTheDocument()
+    expect(screen.getByText('100,00 €')).toBeInTheDocument()
+    expect(screen.getByText('Differenz')).toBeInTheDocument()
+    expect(screen.getByText('250,00 €')).toBeInTheDocument()
+
+    // Editing the item alone never silently changes the confirmed total.
+    fireEvent.change(screen.getByLabelText('Betrag der Kostenposition'), { target: { value: '120' } })
+    expect(screen.getByText('Bestätigter Gesamtbetrag')).toBeInTheDocument()
+    expect(screen.getAllByText('350,00 €').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    await waitFor(async () => {
+      const saved = await getBill(bill.id)
+      expect(saved?.totalAmount).toBe(350)
+      expect(saved?.totalAmountConfirmed).toBe(true)
+    })
+  })
+
+  it('discards the confirmed total and recomputes from items after "Aus Positionen neu berechnen"', async () => {
+    const { bill } = await createConfirmedBill()
+
+    renderBillsApp(`/abrechnungen/${bill.id}/bearbeiten`)
+    await waitForLoadingToFinish()
+    await screen.findByRole('option', { name: /Heizung/ })
+
+    fireEvent.change(screen.getByLabelText('Betrag der Kostenposition'), { target: { value: '320' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Aus Positionen neu berechnen' }))
+
+    expect(screen.queryByText('Bestätigter Gesamtbetrag')).not.toBeInTheDocument()
+    expect(screen.getByText('Gesamt')).toBeInTheDocument()
+    expect(screen.getAllByText('320,00 €').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    await waitFor(async () => {
+      const saved = await getBill(bill.id)
+      expect(saved?.totalAmount).toBe(320)
+      expect(saved?.totalAmountConfirmed).toBe(false)
     })
   })
 })

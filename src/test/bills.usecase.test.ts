@@ -124,6 +124,102 @@ describe('deleteBillWithItems', () => {
   })
 })
 
+describe('Bill.totalAmountConfirmed', () => {
+  const twoItems = (overrides: Partial<BillInput> = {}): BillInput =>
+    baseInput({
+      items: [
+        { categoryId: 'heating', description: 'A', amount: 100 },
+        { categoryId: 'water', description: 'B', amount: 200 },
+      ],
+      advancePayments: 0,
+      ...overrides,
+    })
+
+  it('Szenario 1: normale manuelle Bill - kein bestätigter Betrag, Edit ohne relevante Änderung behält die Summe', async () => {
+    const created = await createBillWithItems(twoItems())
+    expect(created.bill.totalAmount).toBe(300)
+    expect(created.bill.totalAmountConfirmed).toBe(false)
+
+    const edited = await updateBillWithItems(created.bill.id, twoItems())
+    expect(edited.bill.totalAmount).toBe(300)
+    expect(edited.bill.totalAmountConfirmed).toBe(false)
+  })
+
+  it('Szenario 2: Import mit bestätigtem Gesamtbetrag übernimmt und markiert ihn als bestätigt', async () => {
+    const created = await createBillWithItems(twoItems({ totalAmount: 350 }))
+    expect(created.bill.totalAmount).toBe(350)
+    expect(created.bill.totalAmountConfirmed).toBe(true)
+  })
+
+  it('Szenario 3: bestätigte Bill bearbeiten, Items unverändert - bestätigte Summe bleibt erhalten', async () => {
+    const created = await createBillWithItems(twoItems({ totalAmount: 350 }))
+    const edited = await updateBillWithItems(created.bill.id, twoItems())
+    expect(edited.bill.totalAmount).toBe(350)
+    expect(edited.bill.totalAmountConfirmed).toBe(true)
+  })
+
+  it('Szenario 4: bestätigte Bill, Positionssumme ändert sich - Summe bleibt ohne explizite Neu-Berechnung erhalten', async () => {
+    const created = await createBillWithItems(twoItems({ totalAmount: 350 }))
+    const edited = await updateBillWithItems(
+      created.bill.id,
+      twoItems({
+        items: [
+          { categoryId: 'heating', description: 'A', amount: 120 },
+          { categoryId: 'water', description: 'B', amount: 200 },
+        ],
+      }),
+    )
+    expect(edited.bill.totalAmount).toBe(350)
+    expect(edited.bill.totalAmountConfirmed).toBe(true)
+
+    const items = await listBillItems(created.bill.id)
+    expect(items.reduce((sum, item) => sum + item.amount, 0)).toBe(320)
+  })
+
+  it('Szenario 5: explizite Neu-Berechnung verwirft die bestätigte Summe', async () => {
+    const created = await createBillWithItems(twoItems({ totalAmount: 350 }))
+    const edited = await updateBillWithItems(
+      created.bill.id,
+      twoItems({
+        items: [
+          { categoryId: 'heating', description: 'A', amount: 120 },
+          { categoryId: 'water', description: 'B', amount: 200 },
+        ],
+        recalculateTotalAmount: true,
+      }),
+    )
+    expect(edited.bill.totalAmount).toBe(320)
+    expect(edited.bill.totalAmountConfirmed).toBe(false)
+  })
+
+  it('Szenario 6: nach einer Neu-Berechnung verhält sich ein weiteres Edit wieder wie eine normale Bill', async () => {
+    const created = await createBillWithItems(twoItems({ totalAmount: 350 }))
+    const recalculated = await updateBillWithItems(
+      created.bill.id,
+      twoItems({
+        items: [
+          { categoryId: 'heating', description: 'A', amount: 120 },
+          { categoryId: 'water', description: 'B', amount: 200 },
+        ],
+        recalculateTotalAmount: true,
+      }),
+    )
+    expect(recalculated.bill.totalAmountConfirmed).toBe(false)
+
+    const next = await updateBillWithItems(
+      recalculated.bill.id,
+      twoItems({
+        items: [
+          { categoryId: 'heating', description: 'A', amount: 90 },
+          { categoryId: 'water', description: 'B', amount: 200 },
+        ],
+      }),
+    )
+    expect(next.bill.totalAmount).toBe(290)
+    expect(next.bill.totalAmountConfirmed).toBe(false)
+  })
+})
+
 describe('listBills', () => {
   it('sorts newest year first', async () => {
     await createBillWithItems(baseInput({ year: 2023, items: [{ categoryId: 'heating', description: 'x', amount: 1 }] }))

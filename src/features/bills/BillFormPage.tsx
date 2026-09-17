@@ -53,6 +53,14 @@ export function BillFormPage({ mode }: BillFormPageProps) {
   const [loadingExisting, setLoadingExisting] = useState(mode === 'edit')
   const [loadError, setLoadError] = useState(false)
 
+  // Whether the loaded Bill has a deliberately confirmed totalAmount (e.g.
+  // from a reviewed import) and its value - fixed at load time, not
+  // recomputed as items change. recalculateRequested is the explicit,
+  // user-triggered opt-out of keeping it (see "Aus Positionen neu
+  // berechnen" below); editing items alone never sets it.
+  const [confirmedTotalAmount, setConfirmedTotalAmount] = useState<number | undefined>(undefined)
+  const [recalculateRequested, setRecalculateRequested] = useState(false)
+
   useEffect(() => {
     if (mode !== 'edit' || !id) return
     let cancelled = false
@@ -64,6 +72,7 @@ export function BillFormPage({ mode }: BillFormPageProps) {
           return
         }
         setType(bill.type)
+        setConfirmedTotalAmount(bill.totalAmountConfirmed === true ? bill.totalAmount : undefined)
         setYear(bill.year.toString())
         setPeriodStart(bill.periodStart?.slice(0, 10) ?? '')
         setPeriodEnd(bill.periodEnd?.slice(0, 10) ?? '')
@@ -87,10 +96,11 @@ export function BillFormPage({ mode }: BillFormPageProps) {
     }
   }, [mode, id])
 
-  const totalAmount = useMemo(
+  const itemSum = useMemo(
     () => items.reduce((sum, item) => sum + (parseGermanAmount(item.amountText) ?? 0), 0),
     [items],
   )
+  const totalAmount = confirmedTotalAmount !== undefined && !recalculateRequested ? confirmedTotalAmount : itemSum
   const advancePayments = parseGermanAmount(advancePaymentsText) ?? 0
   const { balance, balanceType } = calculateBillBalance(totalAmount, advancePayments)
 
@@ -119,6 +129,7 @@ export function BillFormPage({ mode }: BillFormPageProps) {
       periodEnd: periodEnd ? new Date(`${periodEnd}T00:00:00.000Z`).toISOString() : undefined,
       advancePayments: parsedAdvancePayments ?? Number.NaN,
       items: parsedItems,
+      recalculateTotalAmount: recalculateRequested,
     }
 
     const validationErrors = validateBillInput(input)
@@ -195,10 +206,34 @@ export function BillFormPage({ mode }: BillFormPageProps) {
         </div>
 
         <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-neutral-500">Gesamt</span>
-            <span className="font-semibold text-neutral-900">{formatCurrency(totalAmount)}</span>
-          </div>
+          {confirmedTotalAmount !== undefined && !recalculateRequested ? (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-neutral-500">Bestätigter Gesamtbetrag</span>
+                <span className="font-semibold text-neutral-900">{formatCurrency(confirmedTotalAmount)}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-sm">
+                <span className="text-neutral-500">Positionssumme</span>
+                <span className="text-neutral-700">{formatCurrency(itemSum)}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-sm">
+                <span className="text-neutral-500">Differenz</span>
+                <span className="text-neutral-700">{formatCurrency(confirmedTotalAmount - itemSum)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecalculateRequested(true)}
+                className="mt-3 min-h-11 w-full rounded-xl border border-neutral-200 text-sm font-medium text-accent"
+              >
+                Aus Positionen neu berechnen
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-neutral-500">Gesamt</span>
+              <span className="font-semibold text-neutral-900">{formatCurrency(totalAmount)}</span>
+            </div>
+          )}
           {balanceType !== 'none' && (
             <div className="mt-1 flex items-center justify-between text-sm">
               <span className="text-neutral-500">{balanceType === 'payment_due' ? 'Nachzahlung' : 'Guthaben'}</span>

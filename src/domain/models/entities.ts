@@ -41,6 +41,11 @@ export interface Bill extends SyncableEntity {
   periodStart?: ISODateString
   periodEnd?: ISODateString
   totalAmount: number
+  /** true when totalAmount is a deliberately confirmed amount (e.g. from a
+   * reviewed OCR import) that may legitimately differ from the sum of this
+   * Bill's items; false/undefined means totalAmount is simply derived from
+   * that sum, as for a normal manually entered Bill. */
+  totalAmountConfirmed?: boolean
   advancePayments: number
   balance: number
   balanceType: BalanceType

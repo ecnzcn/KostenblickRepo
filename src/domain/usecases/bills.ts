@@ -35,6 +35,11 @@ export interface BillInput {
    * un-itemized fees); the review screen lets the user save despite that
    * discrepancy, so whatever they confirmed here is what gets persisted. */
   totalAmount?: number
+  /** Edit-mode only: when the existing Bill has a confirmed totalAmount,
+   * pass true to explicitly discard it and recompute totalAmount from the
+   * submitted items instead. Ignored for create and for Bills without a
+   * confirmed totalAmount, where the sum of items is always used already. */
+  recalculateTotalAmount?: boolean
 }
 
 export interface BillWithItems {
@@ -115,6 +120,7 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
   const now = new Date().toISOString()
   const billId = generateId()
   const items = buildItems(billId, input.items, now)
+  const totalAmountConfirmed = input.totalAmount !== undefined
   const totalAmount = input.totalAmount ?? sumBillItems(items)
   const { balance, balanceType } = calculateBillBalance(totalAmount, input.advancePayments)
 
@@ -130,6 +136,7 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
     totalAmount,
+    totalAmountConfirmed,
     advancePayments: input.advancePayments,
     balance,
     balanceType,
@@ -163,7 +170,16 @@ export async function updateBillWithItems(id: string, input: BillInput): Promise
 
   const now = new Date().toISOString()
   const items = buildItems(id, input.items, now)
-  const totalAmount = sumBillItems(items)
+  const itemSum = sumBillItems(items)
+
+  // A confirmed totalAmount (from a reviewed import) is preserved on edit
+  // unless the user explicitly asks to discard it - editing items never
+  // silently recomputes it. The decision is the explicit
+  // recalculateTotalAmount flag, never a heuristic comparison of the two
+  // numbers (which would misfire whenever they happen to coincide).
+  const keepConfirmedTotal = existing.totalAmountConfirmed === true && input.recalculateTotalAmount !== true
+  const totalAmount = keepConfirmedTotal ? existing.totalAmount : itemSum
+  const totalAmountConfirmed = keepConfirmedTotal
   const { balance, balanceType } = calculateBillBalance(totalAmount, input.advancePayments)
 
   const savedBill = await billRepository.save({
@@ -173,6 +189,7 @@ export async function updateBillWithItems(id: string, input: BillInput): Promise
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
     totalAmount,
+    totalAmountConfirmed,
     advancePayments: input.advancePayments,
     balance,
     balanceType,
