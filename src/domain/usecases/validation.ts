@@ -27,6 +27,14 @@ export function validateContract(contract: Contract): string[] {
   if (contract.cancellationPeriodValue !== undefined && contract.cancellationPeriodUnit === undefined) {
     errors.push('Kündigungsfrist benötigt eine Einheit.')
   }
+  if (!contract.startDate) errors.push('Vertragsbeginn ist erforderlich.')
+  if (
+    contract.endDate &&
+    contract.startDate &&
+    new Date(contract.endDate).getTime() < new Date(contract.startDate).getTime()
+  ) {
+    errors.push('Vertragsende darf nicht vor Vertragsbeginn liegen.')
+  }
   return errors
 }
 

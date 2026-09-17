@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ROUTES } from '../../../constants/navigation'
+import { billDetailPath, ROUTES } from '../../../constants/navigation'
 import { formatCurrency, formatDate } from '../../../utils/formatters'
 import type { BillSummary } from '../dashboard.types'
 
@@ -34,7 +34,7 @@ export function LatestBillCard({ bill }: LatestBillCardProps) {
         </div>
       )}
       <Link
-        to={ROUTES.bills}
+        to={bill ? billDetailPath(bill.billId) : ROUTES.billsNew}
         className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-accent"
       >
         {bill ? 'Abrechnung öffnen' : '+ Abrechnung hinzufügen'}

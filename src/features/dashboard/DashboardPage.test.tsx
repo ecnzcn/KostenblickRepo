@@ -133,8 +133,8 @@ describe('DashboardPage', () => {
     renderPage()
     await waitForLoadingToFinish()
 
-    expect(screen.getByRole('link', { name: '+ Abrechnung' })).toHaveAttribute('href', '#/abrechnungen')
-    expect(screen.getByRole('link', { name: '+ Vertrag' })).toHaveAttribute('href', '#/vertraege')
-    expect(screen.getByRole('link', { name: 'Kosten erfassen' })).toHaveAttribute('href', '#/statistik')
+    expect(screen.getByRole('link', { name: '+ Abrechnung' })).toHaveAttribute('href', '#/abrechnungen/neu')
+    expect(screen.getByRole('link', { name: '+ Vertrag' })).toHaveAttribute('href', '#/vertraege/neu')
+    expect(screen.getByRole('link', { name: 'Kosten erfassen' })).toHaveAttribute('href', '#/kosten/neu')
   })
 })

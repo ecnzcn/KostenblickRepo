@@ -2,9 +2,9 @@ import { Link } from 'react-router-dom'
 import { ROUTES } from '../../../constants/navigation'
 
 const ACTIONS = [
-  { label: '+ Abrechnung', to: ROUTES.bills },
-  { label: '+ Vertrag', to: ROUTES.contracts },
-  { label: 'Kosten erfassen', to: ROUTES.statistics },
+  { label: '+ Abrechnung', to: ROUTES.billsNew },
+  { label: '+ Vertrag', to: ROUTES.contractsNew },
+  { label: 'Kosten erfassen', to: ROUTES.costsNew },
 ] as const
 
 export function QuickActions() {

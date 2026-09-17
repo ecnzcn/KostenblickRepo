@@ -24,5 +24,12 @@ describe('domain validation', () => {
   it('validates OCR confidence', () => expect(validateBillItem(item({ confidence: 1.2 }))).toContain('Confidence muss zwischen 0 und 1 liegen.'))
   it('requires a provider for contracts', () => expect(validateContract(contract({ provider: ' ' }))).toContain('Anbieter darf nicht leer sein.'))
   it('requires a unit when a cancellation period is supplied', () => expect(validateContract(contract({ cancellationPeriodValue: 30 }))).toContain('Kündigungsfrist benötigt eine Einheit.'))
+  it('requires a contract start date', () => expect(validateContract(contract({ startDate: '' }))).toContain('Vertragsbeginn ist erforderlich.'))
+  it('rejects a contract end date before the start date', () =>
+    expect(
+      validateContract(contract({ startDate: '2026-06-01', endDate: '2026-01-01' })),
+    ).toContain('Vertragsende darf nicht vor Vertragsbeginn liegen.'))
+  it('accepts a contract end date on or after the start date', () =>
+    expect(validateContract(contract({ startDate: '2026-01-01', endDate: '2026-01-01' }))).toEqual([]))
   it('sums bill items', () => expect(sumBillItems([item({ amount: 10 }), item({ amount: 20.5 })])).toBe(30.5))
 })
