@@ -80,10 +80,16 @@ export async function saveDocumentFile(file: File, type: DocumentType): Promise<
 
 /** Replaces a document's bytes in place ("Datei ersetzen"): saves the new
  * file under a fresh storage key, updates the Document's metadata
- * (filename/mimeType/size/checksum) to match, resets its OCR state since
- * the previous recognition no longer applies to the new content, and only
- * then removes the old blob - so a failure partway through never leaves the
- * document without any readable file. */
+ * (filename/mimeType/size/checksum) to match, and resets its OCR state
+ * since the previous recognition no longer applies to the new content.
+ * Mirrors saveDocumentFile()'s robustness: once the new blob is saved,
+ * everything after it (checksum, Document write) runs in a second
+ * try/catch that rolls the *new* blob back on any failure, leaving the
+ * existing Document untouched and still pointing at the old (still
+ * present) blob - a failure partway through never leaves the document
+ * without a readable file, and never deletes the old blob before the new
+ * Document record has actually been saved. The rollback is best-effort
+ * (its own failure is swallowed) so it never masks the original error. */
 export async function replaceDocumentFile(documentId: string, file: File): Promise<Document> {
   const errors = validateDocumentFile(file)
   if (errors.length > 0) throw new Error(errors.join(' '))
@@ -97,19 +103,27 @@ export async function replaceDocumentFile(documentId: string, file: File): Promi
   } catch {
     throw new Error('Die Datei konnte nicht ersetzt werden. Bitte versuche es erneut.')
   }
-  const checksum = await calculateChecksum(file)
 
-  const updated = await documentRepository.save({
-    ...existing,
-    filename: storageResult.filename,
-    mimeType: storageResult.mimeType,
-    size: storageResult.size,
-    storagePath: storageResult.storageKey,
-    checksum,
-    ocrStatus: 'not_started',
-    ocrText: undefined,
-  })
+  let updated: Document
+  try {
+    const checksum = await calculateChecksum(file)
+    updated = await documentRepository.save({
+      ...existing,
+      filename: storageResult.filename,
+      mimeType: storageResult.mimeType,
+      size: storageResult.size,
+      storagePath: storageResult.storageKey,
+      checksum,
+      ocrStatus: 'not_started',
+      ocrText: undefined,
+    })
+  } catch (error) {
+    await documentStorageService.delete(storageResult.storageKey).catch(() => undefined)
+    throw error
+  }
 
+  // Only removed now that the new Document record has been saved
+  // successfully - the old blob stays intact for every failure above.
   await documentStorageService.delete(existing.storagePath).catch(() => undefined)
   return updated
 }

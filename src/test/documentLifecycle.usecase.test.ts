@@ -162,6 +162,67 @@ describe('replaceDocumentFile', () => {
     await expect(replaceDocumentFile(original.id, makeFile('note.txt', 'text/plain'))).rejects.toThrow(/Dateityp/)
     expect((await getDocument(original.id))?.filename).toBe('bill.pdf')
   })
+
+  it('rolls back the new blob if checksum calculation fails, leaving the old blob and Document untouched', async () => {
+    const original = await saveDocumentFile(makeFile('bill.pdf', 'application/pdf', 'old content'), 'bill')
+    const oldStoragePath = original.storagePath
+
+    const saveSpy = vi.spyOn(documentStorageService, 'save')
+    const digestSpy = vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new Error('digest failed'))
+
+    await expect(
+      replaceDocumentFile(original.id, makeFile('bill-v2.pdf', 'application/pdf', 'new content')),
+    ).rejects.toThrow('digest failed')
+
+    const newStorageResult = await saveSpy.mock.results[0]!.value
+    expect(await documentStorageService.get(newStorageResult.storageKey)).toBeUndefined()
+    expect(await documentStorageService.get(oldStoragePath)).toBeDefined()
+
+    const reloaded = await getDocument(original.id)
+    expect(reloaded?.storagePath).toBe(oldStoragePath)
+    expect(reloaded?.filename).toBe('bill.pdf')
+    expect(reloaded?.checksum).toBe(original.checksum)
+
+    saveSpy.mockRestore()
+    digestSpy.mockRestore()
+  })
+
+  it('rolls back the new blob if saving the updated Document fails, leaving the old blob and Document untouched', async () => {
+    const original = await saveDocumentFile(makeFile('bill.pdf', 'application/pdf', 'old content'), 'bill')
+    const oldStoragePath = original.storagePath
+
+    const saveSpy = vi.spyOn(documentStorageService, 'save')
+    const repoSaveSpy = vi.spyOn(documentRepository, 'save').mockRejectedValueOnce(new Error('write failed'))
+
+    await expect(
+      replaceDocumentFile(original.id, makeFile('bill-v2.pdf', 'application/pdf', 'new content')),
+    ).rejects.toThrow('write failed')
+
+    const newStorageResult = await saveSpy.mock.results[0]!.value
+    expect(await documentStorageService.get(newStorageResult.storageKey)).toBeUndefined()
+    expect(await documentStorageService.get(oldStoragePath)).toBeDefined()
+
+    const reloaded = await getDocument(original.id)
+    expect(reloaded?.storagePath).toBe(oldStoragePath)
+    expect(reloaded?.filename).toBe('bill.pdf')
+
+    saveSpy.mockRestore()
+    repoSaveSpy.mockRestore()
+  })
+
+  it('a rollback failure (new blob delete also fails) never masks the original replace error', async () => {
+    const original = await saveDocumentFile(makeFile('bill.pdf', 'application/pdf', 'old content'), 'bill')
+
+    const repoSaveSpy = vi.spyOn(documentRepository, 'save').mockRejectedValueOnce(new Error('replace failed'))
+    const deleteSpy = vi.spyOn(documentStorageService, 'delete').mockRejectedValueOnce(new Error('cleanup failed'))
+
+    await expect(
+      replaceDocumentFile(original.id, makeFile('bill-v2.pdf', 'application/pdf', 'new content')),
+    ).rejects.toThrow('replace failed')
+
+    repoSaveSpy.mockRestore()
+    deleteSpy.mockRestore()
+  })
 })
 
 describe('getLinkedEntity / isDocumentReferenced', () => {
