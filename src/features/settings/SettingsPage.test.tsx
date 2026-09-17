@@ -37,6 +37,16 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('link', { name: 'Kostenübersicht' })).toHaveAttribute('href', '#/kostenuebersicht')
   })
 
+  it('links "Kosten" to the manual cost entries page', () => {
+    renderPage()
+    expect(screen.getByRole('link', { name: 'Kosten' })).toHaveAttribute('href', '#/kosten')
+  })
+
+  it('no longer shows the non-functional "Synchronisierung" placeholder', () => {
+    renderPage()
+    expect(screen.queryByText('Synchronisierung')).not.toBeInTheDocument()
+  })
+
   it('shows all four reminder intervals enabled by default and persists a toggle', () => {
     renderPage()
 

@@ -30,7 +30,11 @@ export function SettingsPage() {
               Erinnerungen
             </Link>
           </li>
-          <li className="px-4 py-3 text-sm text-neutral-700">Synchronisierung</li>
+          <li>
+            <Link to={ROUTES.costs} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
+              Kosten
+            </Link>
+          </li>
         </ul>
 
         <ReminderIntervalSettings />
