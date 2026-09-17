@@ -78,6 +78,10 @@ function createSchema(db: IDBPDatabase<KostenblickDB>, oldVersion: number): void
       categories.put(category)
     }
   }
+
+  if (oldVersion < 2) {
+    db.createObjectStore(STORE_NAMES.documentFiles, { keyPath: 'id' })
+  }
 }
 
 export function getDatabase(): Promise<IDBPDatabase<KostenblickDB>> {

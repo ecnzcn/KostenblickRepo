@@ -3,6 +3,7 @@ import { ROUTES } from '../../../constants/navigation'
 
 const ACTIONS = [
   { label: '+ Abrechnung', to: ROUTES.billsNew },
+  { label: '+ Abrechnung importieren', to: ROUTES.billsImport },
   { label: '+ Vertrag', to: ROUTES.contractsNew },
   { label: 'Kosten erfassen', to: ROUTES.costsNew },
 ] as const
@@ -11,7 +12,7 @@ export function QuickActions() {
   return (
     <section>
       <h2 className="mb-3 text-base font-semibold text-neutral-900">Schnellzugriff</h2>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {ACTIONS.map((action) => (
           <Link
             key={action.label}

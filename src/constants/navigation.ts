@@ -12,6 +12,7 @@ export const ROUTES = {
   statistics: '/statistik',
   bills: '/abrechnungen',
   billsNew: '/abrechnungen/neu',
+  billsImport: '/abrechnungen/import',
   billDetailPattern: '/abrechnungen/:id',
   billEditPattern: '/abrechnungen/:id/bearbeiten',
   contracts: '/vertraege',

@@ -3,12 +3,18 @@ import { generateId } from '../../utils/id'
 import { roundToCents } from '../../utils/money'
 import type { BalanceType, Bill, BillItem, BillType } from '../models/entities'
 import { billItemRepository, billRepository } from '../repositories/indexedDbRepositories'
+import { deleteDocument } from './documents'
 import { sumBillItems } from './validation'
 
 export interface BillItemInput {
   categoryId: string
   description: string
   amount: number
+  /** Only set by the OCR import flow; manual entry (the default) always
+   * saves items as fully confirmed, matching prior behavior. */
+  confidence?: number
+  sourceText?: string
+  manuallyVerified?: boolean
 }
 
 export interface BillInput {
@@ -18,6 +24,9 @@ export interface BillInput {
   periodEnd?: string
   advancePayments: number
   items: BillItemInput[]
+  /** Set when this Bill was created via the OCR import workflow, linking it
+   * to its original Document. */
+  documentId?: string
 }
 
 export interface BillWithItems {
@@ -70,8 +79,9 @@ function buildItems(billId: string, items: BillItemInput[], now: string): BillIt
     categoryId: item.categoryId,
     description: item.description,
     amount: item.amount,
-    confidence: 1,
-    manuallyVerified: true,
+    confidence: item.confidence ?? 1,
+    sourceText: item.sourceText,
+    manuallyVerified: item.manuallyVerified ?? true,
   }))
 }
 
@@ -111,7 +121,8 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
     advancePayments: input.advancePayments,
     balance,
     balanceType,
-    ocrStatus: 'not_started',
+    documentId: input.documentId,
+    ocrStatus: input.documentId ? 'verified' : 'not_started',
   }
 
   const savedBill = await billRepository.save(bill)
@@ -178,6 +189,14 @@ export async function getBill(id: string): Promise<Bill | undefined> {
 export async function listBillItems(billId: string): Promise<BillItem[]> {
   const all = await billItemRepository.getAll()
   return all.filter((item) => item.billId === billId)
+}
+
+/** Deletes the original document linked to a bill and clears the link -
+ * the bill itself (and its items) are left untouched. */
+export async function removeBillDocument(bill: Bill): Promise<Bill> {
+  if (!bill.documentId) return bill
+  await deleteDocument(bill.documentId)
+  return billRepository.save({ ...bill, documentId: undefined, ocrStatus: 'not_started' })
 }
 
 export async function listBills(): Promise<Bill[]> {

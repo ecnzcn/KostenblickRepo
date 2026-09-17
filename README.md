@@ -5,10 +5,11 @@ zur Verwaltung von Nebenkostenabrechnungen, Verträgen, Müllkosten,
 Kündigungsfristen, Erinnerungen und Kostenstatistiken – offlinefähig und
 später cloud-synchronisierbar.
 
-> **Status:** Phase 1 (PWA-Grundgerüst). Die App enthält aktuell Navigation,
-> Layout und die technische Basis. Fachliche Features (Domain-Modelle,
-> IndexedDB, Dashboard, OCR, Statistik, Verträge, Reminder, Sync) folgen in
-> den nächsten Entwicklungsphasen – siehe [`CLAUDE.md`](./CLAUDE.md).
+> **Status:** Kosten-, Vertrags- und Abrechnungsverwaltung (inkl. Import von
+> Abrechnungen per PDF/Foto mit OCR-Vorschlägen zur manuellen Prüfung) sowie
+> das Dashboard sind nutzbar. Statistik-Detailauswertungen, Erinnerungen und
+> echte Cloud-Synchronisierung folgen in weiteren Phasen – siehe
+> [`CLAUDE.md`](./CLAUDE.md).
 
 ## Features
 
