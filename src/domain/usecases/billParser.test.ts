@@ -109,4 +109,88 @@ Abrechnungsjahr 2024`
     expect(result.advancePayments.value).toBe(500)
     expect(result.items).toHaveLength(1)
   })
+
+  // Phase 4.1: real OCR output is messier than a hand-written fixture -
+  // ragged whitespace, stray line breaks, no guaranteed layout. These use
+  // text shaped like genuine Tesseract output rather than a clean mock.
+  describe('realistic OCR-shaped text', () => {
+    it('parses Gesamtbetrag/Vorauszahlungen/Nachzahlung from a minimal OCR-style snippet', () => {
+      const text = 'Gesamtbetrag: 1.284,53 €\nVorauszahlungen: 1.200,00 €\nNachzahlung: 84,53 €'
+      const result = parseBillText(text, categories)
+      expect(result.totalAmount.value).toBe(1284.53)
+      expect(result.advancePayments.value).toBe(1200)
+    })
+
+    // Regression: a real Tesseract run on a rendered bill collapsed the
+    // original multi-space column gap down to a single space, which caused
+    // every cost position to go undetected (only labels/totals still
+    // worked) until the item-line heuristic was loosened to accept one
+    // space - as long as the amount includes decimal cents.
+    it('detects cost positions separated by only a single space, as real OCR output produces', () => {
+      const text = `Nebenkostenabrechnung
+Abrechnungsjahr 2025
+Abrechnungszeitraum: 01.01.2025 bis 31.12.2025
+Heizkosten 620,12 €
+
+Wasser 184,30 €
+
+Muell 92,40 €
+
+Hausmeister 85,00 €
+
+Gesamtkosten: 981,82 €
+
+Vorauszahlungen: 900,00 €`
+      const result = parseBillText(text, categories)
+      expect(result.totalAmount.value).toBe(981.82)
+      expect(result.advancePayments.value).toBe(900)
+      expect(result.items).toHaveLength(4)
+      expect(result.items.map((item) => item.categoryId)).toEqual(['heating', 'water', 'waste', 'caretaker'])
+      expect(result.items.map((item) => item.amount)).toEqual([620.12, 184.3, 92.4, 85])
+    })
+
+    it('does not misread a stray bare integer (e.g. a page/reference number) as a cost position', () => {
+      const text = 'Seite 2 von 5\nRechnungsnummer 123456\nHeizung 100,00 €'
+      const result = parseBillText(text, categories)
+      expect(result.items).toHaveLength(1)
+      expect(result.items[0]?.description).toBe('Heizung')
+    })
+
+    it('tolerates ragged leading/trailing whitespace and stray blank lines from OCR', () => {
+      const text = `  Nebenkostenabrechnung   \n\n\n\n  Abrechnungsjahr 2025  \n\n  Heizkosten            620,12 €  \n\n   Gesamtkosten: 1.284,53 €   `
+      const result = parseBillText(text, categories)
+      expect(result.year.value).toBe(2025)
+      expect(result.totalAmount.value).toBe(1284.53)
+      expect(result.items[0]?.categoryId).toBe('heating')
+      expect(result.items[0]?.amount).toBe(620.12)
+    })
+
+    it('recognizes a Rechnungszeitraum given as two German dates', () => {
+      const text = 'Abrechnungszeitraum: 01.01.2025 bis 31.12.2025\nGesamtkosten: 100,00 €'
+      const result = parseBillText(text, categories)
+      expect(result.periodStart.value).toBe('2025-01-01T00:00:00.000Z')
+      expect(result.periodEnd.value).toBe('2025-12-31T00:00:00.000Z')
+    })
+
+    it('reads a full multi-position bill the way OCR would emit it (single blank-line separated blocks)', () => {
+      const text = `Nebenkostenabrechnung
+Abrechnungsjahr 2025
+Abrechnungszeitraum: 01.01.2025 bis 31.12.2025
+
+Heizung          620,12 €
+Wasser           184,30 €
+Müll              92,40 €
+Hausmeister       85,00 €
+
+Gesamtbetrag: 1.284,53 €
+Vorauszahlungen: 1.200,00 €
+Nachzahlung: 84,53 €`
+      const result = parseBillText(text, categories)
+      expect(result.year.value).toBe(2025)
+      expect(result.totalAmount.value).toBe(1284.53)
+      expect(result.advancePayments.value).toBe(1200)
+      expect(result.items).toHaveLength(4)
+      expect(result.items.map((item) => item.categoryId)).toEqual(['heating', 'water', 'waste', 'caretaker'])
+    })
+  })
 })

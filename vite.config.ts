@@ -52,7 +52,33 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // The local OCR engine (Tesseract worker/WASM, German trained data,
+        // the code-split LocalOCRService chunk) and the PDF.js worker chunk
+        // are multi-MB and only needed once a user actually imports a
+        // document - they are cached on first use via runtimeCaching below
+        // instead of bloating the initial install for every other screen.
+        globIgnores: ['vendor/**', 'tessdata/**', '**/LocalOCRService-*.js'],
         navigateFallback: 'index.html',
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/vendor/tesseract/') || url.pathname.includes('/tessdata/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'ocr-engine-assets',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.includes('pdf.worker') || url.pathname.includes('LocalOCRService'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pdf-worker-assets',
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
       devOptions: {
         enabled: false,
