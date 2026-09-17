@@ -365,9 +365,14 @@ Dashboard handgerollte SVG/CSS-Komponenten (keine neue Chart-Library
 nötig); Balkendiagramme tragen zusätzlich eine `sr-only`-Textliste als
 barrierefreie Alternativdarstellung.
 
-**Dashboard-Integration**: Die kompakte Statistik-Karte auf dem Dashboard
-(`StatisticsSummaryCard`) ruft direkt `getStatisticsData()` auf – keine
-eigene/duplizierte Berechnungslogik im Dashboard-Feature.
+**Dashboard-Integration**: Bewusst (noch) keine. Das bestehende Dashboard
+rechnet weiterhin ausschließlich über die `CostEntry`-basierte
+`getDashboardData()`-Pipeline; Phase 5 erweitert das Dashboard nicht um
+eine zweite, `Bill`-basierte Kostenanzeige, da beide Pipelines aktuell
+unterschiedliche Gesamtsummen liefern können (siehe „Datenquelle" oben) und
+das für Nutzer wie ein Fehler wirken könnte. Die Statistik ist in Phase 5
+ausschließlich über `/statistik` erreichbar. Eine Zusammenführung beider
+Kostenquellen ist ein eigenes, künftiges Arbeitspaket.
 
 **Teststrategie**: Reine Kalkulationsfunktionen sind co-located getestet
 (z. B. `calculateCategoryStatistics.ts` über `src/test/

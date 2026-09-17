@@ -27,7 +27,7 @@ Phasenplan):
   Kündigungsfrist-Berechnung
 - Erinnerungen vor Kündigungsterminen (90/30/7/1 Tage, konfigurierbar)
 - Dashboard mit monatlichen/jährlichen Gesamtkosten und
-  Kategorie-Auswertung sowie einer kompakten Statistik-Karte
+  Kategorie-Auswertung
 - Statistik-Seite (`/statistik`): Gesamtkosten und Vorjahresvergleich pro
   Jahr, Kosten nach Kategorie, wichtigste Kostenpositionen, monatliche
   Entwicklung (nur wenn Abrechnungen tatsächlich einem Monat zuordenbar
