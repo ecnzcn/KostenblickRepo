@@ -119,28 +119,144 @@ Unterstützte Einheiten: `days`, `weeks`, `months`, `years`. Die Berechnung
 wird zentral in `domain/usecases` implementiert, getestet und **nicht** in
 einer React-Komponente dupliziert.
 
-### OCR & Dokument-Import (Phase 4)
+### OCR & Dokument-Import (Phase 4, echte lokale OCR seit Phase 4.1)
 
 OCR-Ergebnisse sind zunächst **Vorschläge**. Kein automatisch erkannter Wert
 darf ohne Review-Mechanismus als endgültig gelten. Jeder erkannte Wert
 benötigt `confidence`, `sourceText`, `manuallyVerified`. Bei niedriger
-Confidence muss die UI eine manuelle Prüfung verlangen.
+Confidence muss die UI eine manuelle Prüfung verlangen. Die Review-UI zeigt
+dazu immer einen Hinweis, dass erkannte Werte vor dem Speichern zu prüfen
+sind (siehe „Review & Persistenz" unten) – OCR-Ergebnisse werden nie als
+fertige, garantiert korrekte Daten dargestellt.
 
 Die UI kommuniziert ausschließlich über die `OCRService`-Schnittstelle
 (`src/services/ocr/OCRService.ts`): `extractText`, `analyzeDocument`,
-`extractBillData`. `MockOCRService` (`src/services/ocr/MockOCRService.ts`)
-ist die aktuelle, klar als Mock dokumentierte Implementierung – sie liest
-keine echten Dateiinhalte, sondern liefert einen festen, plausiblen
-deutschen Abrechnungstext, damit der komplette Import-Workflow entwickel-
-und testbar ist, bevor ein echter Provider (On-Device Vision, Cloud-API,
-eigenes Backend) angebunden wird. Ein Wechsel betrifft ausschließlich die
-`ocrService`-Instanz in `MockOCRService.ts`; kein Aufrufer ändert sich.
+`extractBillData` (alle mit optionalem zweiten Parameter `OCROptions` -
+`onProgress`/`signal` - für Fortschritt und Abbruch), plus ein optionales
+`dispose()` zum Freigeben von Ressourcen. `src/services/ocr/
+activeOcrService.ts` ist die **einzige** Stelle, die entscheidet, welche
+Implementierung tatsächlich läuft (aktuell `LocalOCRService`); sie lädt
+diese Implementierung per dynamischem `import()` erst beim ersten
+tatsächlichen OCR-Aufruf, damit Tesseract/pdfjs-dist nicht im initialen
+Bundle jeder Seite landen (siehe „Performance & Bundle-Größe" unten). Kein
+Aufrufer importiert `LocalOCRService`, `tesseract.js` oder `pdfjs-dist`
+direkt.
+
+`MockOCRService` (`src/services/ocr/MockOCRService.ts`) bleibt erhalten,
+wird aber von der App selbst nicht mehr verwendet - sie liest keine echten
+Dateiinhalte, sondern liefert einen festen, plausiblen deutschen
+Abrechnungstext. Tests, die schnelle/deterministische OCR-Ergebnisse statt
+echter (langsamer, WASM-basierter) Erkennung brauchen, importieren sie
+direkt oder mocken `activeOcrService.ts` (siehe `billImport.integration.
+test.tsx`).
+
+`LocalOCRService` (`src/services/ocr/LocalOCRService.ts`) ist die echte,
+vollständig lokale (offline-fähige) Implementierung:
+
+- **PDF**: zuerst wird die eingebettete Textebene gelesen
+  (`services/ocr/pdf/pdfDocument.ts`, via `pdfjs-dist`). Ist genug
+  verwertbarer Text vorhanden (`hasUsableText`), wird **kein** OCR
+  ausgeführt. Andernfalls gilt das PDF als gescannt: jede Seite wird einzeln
+  auf ein `<canvas>` gerendert, per OCR erkannt und wieder freigegeben
+  (nie alle Seiten gleichzeitig im Speicher), Ergebnisse werden in
+  Seitenreihenfolge mit `--- Seite N ---`-Trennern zusammengeführt.
+- **Bilder** (JPEG/PNG/WebP): OCR läuft direkt auf der Datei.
+- **OCR-Engine**: `tesseract.js` (WASM, läuft in einem eigenen Worker,
+  blockiert die UI nicht), deutsches Sprachmodell
+  (`4.0.0_best_int`, LSTM). Worker/Core/Sprachdaten sind lokal unter
+  `public/vendor/tesseract/` bzw. `public/tessdata/` gebündelt (siehe deren
+  `README.md`) statt von einem CDN geladen zu werden - es findet **kein**
+  Netzwerkzugriff auf einen externen OCR-Anbieter statt, und nach dem
+  ersten Laden sind diese Assets via Workbox `CacheFirst` dauerhaft
+  gecacht (siehe `vite.config.ts`), die OCR funktioniert danach offline.
+- **Fortschritt**: `OCRProgress` (`stage`, optional `current`/`total`,
+  `message`) - nie eine erfundene Prozentzahl. `current`/`total` werden nur
+  gesetzt, wenn sie echt bekannt sind (Seite X von Y; Tesseracts eigener,
+  gemessener Recognize-Fortschritt 0-100). Ohne bekannten Fortschritt zeigt
+  die UI einen reinen (indeterminate) Spinner.
+- **Abbruch**: `OCROptions.signal` (AbortSignal). Bricht die Verarbeitung
+  zwischen Seiten/Schritten ab und wirft `OCRCancelledError`
+  (`services/ocr/OCRCancelledError.ts`); die Import-Seite unterscheidet das
+  von einem echten Fehler und räumt das zwischenzeitlich gespeicherte
+  `Document` wieder auf, ohne eine Fehlermeldung zu zeigen.
+- **Ressourcen**: `dispose()` beendet den Tesseract-Worker
+  (`services/ocr/tesseract/tesseractWorker.ts`); `ImportBillPage` ruft das
+  beim Verlassen des Import-Screens auf. Canvas-Objekte werden nach jeder
+  Seite sofort verkleinert/freigegeben, PDF-Dokumente/-Seiten werden über
+  `loadingTask.destroy()`/`page.cleanup()` geschlossen.
+- **Normalisierung**: `domain/usecases/ocrNormalization.ts`
+  (`normalizeOcrText`) räumt vor dem Parsen nur Formatierungsrauschen auf
+  (Zeilenenden, Zeilen-Leerraum, überzählige Leerzeilen) - Ziffern,
+  Währungszeichen und die Spaltenbreite innerhalb einer Zeile werden nie
+  verändert, da finanzielle Werte nie automatisch "korrigiert" werden
+  dürfen. Der Bill Parser selbst braucht dagegen nur noch **ein**
+  trennendes Leerzeichen zwischen Beschreibung und Betrag einer
+  Kostenposition (statt zuvor zwei) - echter Tesseract-Output rekonstruiert
+  Zeilen mit einfachen Leerzeichen und verliert die ursprüngliche
+  Spaltenausrichtung eines gedruckten Dokuments; ohne diese Lockerung wurde
+  in einem echten Browsertest keine einzige Kostenposition erkannt.
+  Ausgeschlossen bleibt dabei die reine Ganzzahl-Variante des
+  Betragsmusters (kein Komma/Punkt für Cent-Beträge), damit eine
+  zufällige Zahl in einer anderen Zeile (z. B. „Seite 2 von 5") nicht als
+  Kostenposition fehlinterpretiert wird.
+
+**Zwei konkrete, beim echten Browsertest gefundene und behobene Bugs**
+(nicht beschönigt, siehe auch PR-Beschreibung):
+
+1. `pdfjs-dist` 6.x ruft intern `Map.prototype.getOrInsertComputed` auf
+   (ein sehr neues, noch von keiner getesteten Browser-Engine
+   implementiertes Map-Upsert-API) - jedes `page.render()` schlug dadurch
+   mit `TypeError: ...getOrInsertComputed is not a function` fehl und
+   brach damit jede gescannte PDF-Seite. Behoben durch einen minimalen,
+   spec-treuen Polyfill (`services/ocr/pdf/mapUpsertPolyfill.ts`), der die
+   Methode nur ergänzt, wenn sie fehlt.
+2. Die Textebenen-Extraktion (`extractPdfPageTexts`) hat ursprünglich alle
+   Textfragmente einer PDF-Seite ohne Zeilenumbrüche zu einer einzigen
+   Zeile zusammengefügt - für den zeilenbasierten Parser dadurch praktisch
+   unbrauchbar (Kostenpositionen ließen sich nicht mehr trennen). Behoben,
+   indem pdfjs' eigenes `hasEOL`-Flag pro Textfragment genutzt wird, um
+   Zeilenumbrüche an der richtigen Stelle wiederherzustellen.
+
 (Abweichung von der ursprünglichen Planung: Es gibt keine separate
 `calculateConfidence`-Methode auf `OCRService` – Confidence-Werte kommen
 immer vom Provider selbst; ihre *Interpretation* ist zentral in
 `src/constants/confidence.ts` (`getConfidenceLevel`,
 `CONFIDENCE_THRESHOLDS`: hoch ≥ 0.90, mittel ≥ 0.70, sonst niedrig) und dort
 für UI und Use Cases gemeinsam verfügbar.)
+
+**Grenzen der OCR** (bewusst nicht beschönigt): Die Erkennungsqualität
+hängt stark von der Dokumentqualität ab (Auflösung, Kontrast, Schräglage);
+handschriftlicher Text wird nicht unterstützt; ungewöhnliche Layouts (z. B.
+sehr schmale oder unregelmäßige Spaltenabstände bei Kostenpositionen)
+können eine manuelle Korrektur in der Review-UI erfordern, da der Parser
+die Trennung Beschreibung/Betrag u. a. an mehreren Leerzeichen erkennt; sehr
+große/mehrseitige Dokumente brauchen entsprechend mehr Verarbeitungszeit.
+**OCR-Ergebnisse sind und bleiben Vorschläge - sie werden erst durch die
+explizite Bestätigung des Nutzers zu verbindlichen Finanzdaten.**
+
+**Performance & Bundle-Größe**: `tesseract.js`, `pdfjs-dist` und
+`LocalOCRService` werden nicht in das Haupt-Bundle kompiliert, sondern
+liegen in einem eigenen, erst bei Bedarf per `import()` geladenen Chunk
+(`activeOcrService.ts`); ebenso sind der PDF.js-Worker-Chunk sowie die
+Tesseract-/Sprachdaten-Assets explizit von der PWA-Precache-Liste
+ausgenommen (`vite.config.ts`, `globIgnores`) und werden stattdessen per
+Workbox-`runtimeCaching` erst beim ersten OCR-Aufruf geladen und dauerhaft
+gecacht. Ergebnis: Nutzer, die nie eine Abrechnung importieren, laden diese
+mehreren MB nie herunter. Seiten eines gescannten PDFs werden einzeln
+gerendert/erkannt/freigegeben statt alle gleichzeitig im Speicher zu
+halten.
+
+**Teststrategie OCR**: `LocalOCRService`s eigentliche Business-Logik
+(Entscheidung Text-PDF vs. OCR, Seitenreihenfolge, Fortschritt, Abbruch,
+Fehlerweitergabe) ist in `LocalOCRService.test.ts` mit gemockten
+`pdf/pdfDocument.ts`- und `tesseract/tesseractWorker.ts`-Grenzen getestet,
+da Tesseracts WASM-Worker in Vitest/jsdom nicht sinnvoll läuft. Die
+tatsächliche Erkennung (echtes Bild, echtes Text-PDF, echtes gescanntes
+mehrseitiges PDF) ist stattdessen mit einem echten Browser (Playwright)
+verifiziert worden. UI-/Integrationstests, die den kompletten Import-Flow
+durchspielen (`billImport.integration.test.tsx`), mocken
+`activeOcrService.ts` auf `MockOCRService`, um schnell und deterministisch
+zu bleiben.
 
 **Bill Parser** (`domain/usecases/billParser.ts`, `parseBillText`): reine,
 providerunabhängige Funktion, die rohen OCR-Text in ein `ParsedBill`

@@ -16,8 +16,9 @@ später cloud-synchronisierbar.
 Geplanter Funktionsumfang (siehe `CLAUDE.md` für den Architektur- und
 Phasenplan):
 
-- Nebenkostenabrechnungen mit Dokumenten-Upload (PDF/Bilder) und
-  OCR-gestützter Datenerkennung (Vorschläge, die manuell geprüft werden)
+- Nebenkostenabrechnungen mit Dokumenten-Upload (PDF/Bilder) und **echter,
+  lokaler OCR-Erkennung** (läuft vollständig im Browser, keine Cloud-OCR;
+  Vorschläge, die immer manuell geprüft werden müssen, siehe unten)
 - jährliche Kostenhistorien und Jahresvergleiche
 - Müllkosten-Verwaltung
 - Strom-, Internet- und Telekommunikationsverträge inkl. automatischer
@@ -40,6 +41,29 @@ Phasenplan):
 - [React Router](https://reactrouter.com/)
 - [Vitest](https://vitest.dev/) + [Testing Library](https://testing-library.com/)
 - [oxlint](https://oxc.rs/docs/guide/usage/linter.html)
+- [tesseract.js](https://github.com/naptha/tesseract.js) (lokale OCR, WASM,
+  läuft in einem Web Worker) + [pdfjs-dist](https://github.com/mozilla/pdf.js)
+  (PDF-Textextraktion und -Rendering)
+
+## Lokale Abrechnungs-OCR
+
+Beim Import einer Abrechnung (PDF oder Foto) wird der Dokumentinhalt
+**vollständig im Browser** ausgewertet - es wird kein Dokument an einen
+externen OCR-Anbieter (Google, Microsoft, OpenAI, AWS, Azure, …) gesendet.
+
+- **Unterstützte Formate**: PDF, JPEG, PNG, WebP (max. 20 MB).
+- Ein **PDF mit eingebettetem Text** wird direkt ausgelesen, ohne OCR.
+- Ein **gescanntes PDF** (kein Text vorhanden) wird Seite für Seite
+  gerendert und per OCR erkannt (deutsches Sprachmodell).
+- Ein **Foto/Bild** wird direkt per OCR erkannt.
+- Die OCR-Engine (Tesseract-Worker, WASM-Kern, deutsches Sprachmodell) wird
+  beim ersten Import einmalig geladen und danach dauerhaft im Browser
+  gecacht - die Funktion arbeitet danach offline weiter.
+- **Grenzen**: Die Erkennungsqualität hängt von der Dokumentqualität ab,
+  handschriftlicher Text wird nicht unterstützt, und ungewöhnliche Layouts
+  können eine manuelle Korrektur erfordern. **Erkannte Werte sind immer nur
+  Vorschläge** - sie müssen vor dem Speichern in der Review-Ansicht geprüft
+  und bestätigt werden, bevor daraus eine Abrechnung wird.
 
 ## Lokale Entwicklung
 
