@@ -1,11 +1,22 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../../components/feedback/ToastProvider'
 import { deleteDatabase } from '../../../database/database'
 import { getDocument, getDocumentBlob } from '../../../domain/usecases/documents'
 import { listBillItems, listBills } from '../../../domain/usecases/bills'
+import { MockOCRService } from '../../../services/ocr/MockOCRService'
 import { ImportBillPage } from './ImportBillPage'
+
+// This test exercises the full UI wiring (select -> OCR -> review -> save
+// -> IndexedDB), not OCR accuracy itself. The real LocalOCRService (Tesseract
+// WASM in a Worker, pdfjs-dist) cannot run meaningfully inside jsdom/Vitest,
+// so it is swapped for the deterministic MockOCRService here; real OCR is
+// verified separately with a real browser (see the Playwright verification
+// noted in the PR description).
+vi.mock('../../../services/ocr/activeOcrService', () => ({
+  ocrService: new MockOCRService(),
+}))
 
 beforeEach(async () => {
   await deleteDatabase()
@@ -41,10 +52,8 @@ describe('Bill import workflow (full pipeline)', () => {
     expect(await screen.findByText('nebenkosten-2025.pdf')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }))
 
-    // 2. Processing (indeterminate, no fake percentage bar anywhere in the DOM)
-    expect(
-      await screen.findByText(/Dokument wird gelesen|Text wird erkannt|Kostenpositionen werden analysiert/),
-    ).toBeInTheDocument()
+    // 2. Processing (indeterminate spinner, no fake percentage bar anywhere in the DOM)
+    expect(await screen.findByRole('status', { name: 'Verarbeitung' })).toBeInTheDocument()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
 
     // 3. Review - prefilled from the mock OCR/parser pipeline

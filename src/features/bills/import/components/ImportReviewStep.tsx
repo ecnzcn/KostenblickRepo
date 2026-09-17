@@ -11,6 +11,7 @@ import { SourceTextDisclosure } from './SourceTextDisclosure'
 
 interface ImportReviewStepProps {
   filename: string
+  rawText: string
   year: EditableField<string>
   periodStart: EditableField<string>
   periodEnd: EditableField<string>
@@ -35,6 +36,7 @@ interface ImportReviewStepProps {
 
 export function ImportReviewStep({
   filename,
+  rawText,
   year,
   periodStart,
   periodEnd,
@@ -70,6 +72,11 @@ export function ImportReviewStep({
       <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm">
         <p className="text-xs text-neutral-500">Originaldokument</p>
         <p className="font-medium text-neutral-900">{filename}</p>
+      </div>
+
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        Die erkannten Daten wurden automatisch aus dem Dokument übernommen. Bitte prüfe die Angaben vor dem
+        Speichern.
       </div>
 
       <FormError errors={errors} />
@@ -200,6 +207,13 @@ export function ImportReviewStep({
           </div>
         )}
       </div>
+
+      <details className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
+        <summary className="cursor-pointer select-none font-medium text-neutral-700">OCR-Text anzeigen</summary>
+        <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-neutral-50 p-3 font-mono text-xs text-neutral-600">
+          {rawText || 'Kein Text erkannt.'}
+        </pre>
+      </details>
 
       <div className="sticky bottom-20 z-10 -mx-4 flex gap-3 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur lg:static lg:mx-0 lg:border-none lg:bg-transparent lg:p-0">
         <button
