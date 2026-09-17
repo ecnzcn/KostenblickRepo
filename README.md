@@ -14,8 +14,13 @@ später cloud-synchronisierbar.
 > Benachrichtigungen), eine zentrale Dokumentenverwaltung (`/dokumente`:
 > Suche, Filter, Vorschau, Verknüpfung zu Abrechnung/Vertrag/Müllkosten)
 > sowie eine Müllkostenverwaltung (`/muell`: Jahresübersicht,
-> Kategorien-Aufschlüsselung, Jahresvergleich) sind nutzbar. Echte
-> Cloud-Synchronisierung folgt in weiteren Phasen – siehe
+> Kategorien-Aufschlüsselung, Jahresvergleich) sind nutzbar. Eine zentrale
+> Kostenübersicht (`/kostenuebersicht`) kombiniert Abrechnungen, Müllkosten
+> und manuell erfasste Kosten zu einer einzigen, konsistenten
+> Jahres-/Monatsansicht und macht mögliche Doppelzählungen (z. B. Müllkosten
+> sowohl in einer Abrechnung als auch separat erfasst) transparent, statt sie
+> stillschweigend zu verrechnen; das Dashboard nutzt dieselbe Datenbasis.
+> Echte Cloud-Synchronisierung folgt in weiteren Phasen – siehe
 > [`CLAUDE.md`](./CLAUDE.md).
 
 ## Features
@@ -50,6 +55,11 @@ Phasenplan):
   und sonstigen Unterlagen an einem Ort, mit Suche, Filter nach Typ/
   OCR-Status, Sortierung, PDF-/Bild-Vorschau, Datei ersetzen und
   Verknüpfung zur zugehörigen Abrechnung/zum Vertrag
+- Zentrale Kostenübersicht (`/kostenuebersicht`): kombiniert Abrechnungen,
+  Müllkosten und manuell erfasste Kosten zu einer Jahres-/Monatsansicht
+  ohne Vertragskosten, mit transparenter Warnung bei möglicher
+  Doppelzählung statt stiller Verrechnung; Dashboard-Kostenkarten nutzen
+  dieselbe Datenbasis
 - Offline-First mit IndexedDB als primärer Datenquelle
 - Sync-Abstraktion (V1: lokaler Mock, Last-Write-Wins-Konfliktstrategie)
 
@@ -147,6 +157,36 @@ erfassen, bearbeiten und löschen.
   Phase 7 - keine zweite Dokumentlogik).
 - **Löschen**: mit Bestätigung; ein verknüpftes Dokument wird dabei nur
   gelöscht, wenn keine andere Stelle mehr darauf verweist.
+
+## Zentrale Kostenübersicht
+
+Unter `/kostenuebersicht` (erreichbar über „Mehr" oder den
+„Kostenübersicht →"-Link direkt über den Kosten-Karten auf dem Dashboard)
+werden Abrechnungen, Müllkosten und manuell erfasste Kosten zu einer
+konsistenten Ansicht zusammengeführt - ohne eine neue Datenbank-Entity,
+rein zur Laufzeit berechnet.
+
+- **Jahresgesamt**: eine Kennzahl je gewähltem Jahr, darunter die
+  Aufteilung nach Quelle (Abrechnungen/Müll/Manuell). Vertragskosten
+  (`Contract.monthlyCost`/`yearlyCost`) fließen **nicht** ein - das sind
+  vertragliche Konditionen, keine tatsächlich angefallenen Kosten.
+- **Monatsentwicklung**: nur tatsächlich einem Monat zuordenbare Beträge
+  (Abrechnungen mit eindeutigem Zeitraum, manuell erfasste Kosten über ihr
+  Datum) - Müllkosten und Jahresabrechnungen werden nie künstlich auf
+  Monate verteilt; was dadurch nicht in der Monatsansicht auftaucht, wird
+  separat als „nicht monatlich zuordenbar" ausgewiesen.
+- **Kategorien**: Müllkosten laufen unter der zentralen Kategorie „Müll" -
+  die ursprüngliche, genauere Müll-Kategorie (Restmüll, Biomüll, …) bleibt
+  dabei je Eintrag erhalten, nur eben zusätzlich zentral eingeordnet.
+- **Warnung bei möglicher Doppelzählung**: Enthält eine Abrechnung eine
+  Kostenposition mit Kategorie „Müll" **und** existiert für dasselbe Jahr
+  zusätzlich ein separater Müllkosten-Eintrag, wird ein Hinweis angezeigt -
+  nichts wird automatisch gelöscht oder verrechnet, die Prüfung bleibt
+  beim Nutzer.
+- Das bestehende `/kosten`-Feature (manuelle Kostenerfassung) bleibt
+  unverändert bestehen; die zentrale Kostenübersicht ersetzt es nicht,
+  sondern kombiniert seine Daten mit denen aus Abrechnungen und
+  Müllkosten.
 
 ## Lokale Entwicklung
 

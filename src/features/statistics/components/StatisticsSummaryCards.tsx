@@ -12,7 +12,7 @@ export function StatisticsSummaryCards({ summary }: StatisticsSummaryCardsProps)
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <p className="text-sm text-neutral-500">Gesamtkosten {summary.year}</p>
+        <p className="text-sm text-neutral-500">Abrechnungskosten {summary.year}</p>
         <p className="mt-1 text-3xl font-semibold tracking-tight text-neutral-900">
           {formatCurrency(summary.totalAmount)}
         </p>

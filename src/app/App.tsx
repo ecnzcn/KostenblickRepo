@@ -9,6 +9,7 @@ import { ImportBillPage } from '../features/bills/import/ImportBillPage'
 import { ContractDetailPage } from '../features/contracts/ContractDetailPage'
 import { ContractFormPage } from '../features/contracts/ContractFormPage'
 import { ContractsPage } from '../features/contracts/ContractsPage'
+import { CostOverviewPage } from '../features/costOverview/CostOverviewPage'
 import { CostDetailPage } from '../features/costs/CostDetailPage'
 import { CostFormPage } from '../features/costs/CostFormPage'
 import { CostsPage } from '../features/costs/CostsPage'
@@ -58,6 +59,8 @@ export function App() {
           <Route path={ROUTES.wasteNew} element={<WasteCostFormPage mode="create" />} />
           <Route path={ROUTES.wasteEditPattern} element={<WasteCostFormPage mode="edit" />} />
           <Route path={ROUTES.wasteDetailPattern} element={<WasteCostDetailPage />} />
+
+          <Route path={ROUTES.costOverview} element={<CostOverviewPage />} />
 
           <Route path={ROUTES.settings} element={<SettingsPage />} />
           <Route path="*" element={<Navigate to={ROUTES.home} replace />} />

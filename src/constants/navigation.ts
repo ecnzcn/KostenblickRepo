@@ -30,6 +30,7 @@ export const ROUTES = {
   wasteNew: '/muell/neu',
   wasteDetailPattern: '/muell/:id',
   wasteEditPattern: '/muell/:id/bearbeiten',
+  costOverview: '/kostenuebersicht',
   settings: '/mehr',
 } as const
 

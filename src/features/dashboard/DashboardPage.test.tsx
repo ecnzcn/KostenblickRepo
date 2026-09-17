@@ -44,6 +44,7 @@ const emptyData: DashboardData = {
   upcomingContracts: [],
   documentsSummary: { total: 0, needsReview: 0 },
   wasteCostsSummary: { year: 2026, total: 0, byCategory: [] },
+  currentYearWarnings: [],
 }
 
 const populatedData: DashboardData = {
@@ -85,6 +86,7 @@ const populatedData: DashboardData = {
     change: 12.2,
     changePercent: 7,
   },
+  currentYearWarnings: [],
 }
 
 describe('DashboardPage', () => {
@@ -193,5 +195,46 @@ describe('DashboardPage', () => {
     await waitForLoadingToFinish()
 
     expect(screen.getByText(/Noch keine Müllkosten für \d+ erfasst\./)).toBeInTheDocument()
+  })
+
+  it('links to the central cost overview and clarifies the waste card is already part of the totals above', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByRole('link', { name: 'Kostenübersicht →' })).toHaveAttribute('href', '#/kostenuebersicht')
+    expect(screen.getByText('Bereits in den Jahreskosten oben enthalten.')).toBeInTheDocument()
+  })
+
+  it('shows no aggregation warning when there are none for the current year', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.queryByText('⚠ Mögliche Doppelzählung erkannt')).not.toBeInTheDocument()
+  })
+
+  it('shows a compact aggregation warning with a link to the cost overview when the year has a possible duplicate', async () => {
+    getDashboardDataMock.mockResolvedValue({
+      ...populatedData,
+      currentYearWarnings: [
+        {
+          type: 'possible_duplicate_waste',
+          year: 2026,
+          description:
+            'Mögliche Doppelzählung: Müllkosten wurden für 2026 sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.',
+        },
+      ],
+    })
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByRole('alert')).toHaveTextContent('⚠ Mögliche Doppelzählung erkannt')
+    // The Dashboard hint itself must not claim a confirmed or exact duplicate.
+    expect(screen.queryByText(/wurden doppelt gezählt/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Details in der Kostenübersicht' })).toHaveAttribute(
+      'href',
+      '#/kostenuebersicht',
+    )
   })
 })

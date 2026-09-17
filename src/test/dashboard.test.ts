@@ -10,12 +10,14 @@ import {
 } from '../domain/usecases/dashboard'
 import { deleteDatabase } from '../database/database'
 import {
+  billItemRepository,
   billRepository,
   contractRepository,
   costEntryRepository,
   documentRepository,
+  wasteCostRepository,
 } from '../domain/repositories/indexedDbRepositories'
-import type { Bill, Category, Contract, CostEntry, Document } from '../domain/models/entities'
+import type { Bill, BillItem, Category, Contract, CostEntry, Document, WasteCost } from '../domain/models/entities'
 
 const syncBase = {
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -59,6 +61,28 @@ const bill = (overrides: Partial<Bill> = {}): Bill => ({
   balance: 184.2,
   balanceType: 'payment_due',
   ocrStatus: 'not_started',
+  ...overrides,
+})
+
+const billItem = (overrides: Partial<BillItem> = {}): BillItem => ({
+  ...syncBase,
+  id: 'bi-1',
+  billId: 'b-1',
+  categoryId: 'heating',
+  description: 'Position',
+  amount: 0,
+  confidence: 1,
+  manuallyVerified: true,
+  ...overrides,
+})
+
+const wasteCost = (overrides: Partial<WasteCost> = {}): WasteCost => ({
+  ...syncBase,
+  id: 'w-1',
+  userId: 'u1',
+  year: 2026,
+  category: 'residual',
+  amount: 0,
   ...overrides,
 })
 
@@ -198,6 +222,21 @@ describe('getDashboardData (integration against IndexedDB)', () => {
     expect(data.upcomingContracts).toEqual([])
     expect(data.latestBill).toBeUndefined()
     expect(data.documentsSummary).toEqual({ total: 0, needsReview: 0 })
+    expect(data.currentYearWarnings).toEqual([])
+  })
+
+  it('exposes a possible-duplicate warning for the current year, reusing detectCostAggregationWarnings - without reducing currentYearCost', async () => {
+    const currentYearBill = await billRepository.save(bill({ id: 'b-2026', year: 2026, totalAmount: 1000 }))
+    await billItemRepository.save(billItem({ id: 'bi-waste', billId: currentYearBill.id, categoryId: 'waste', amount: 100 }))
+    await wasteCostRepository.save(wasteCost({ id: 'w-2026', year: 2026, amount: 100 }))
+
+    const data = await getDashboardData(new Date('2026-09-16T00:00:00.000Z'))
+
+    // Bill.totalAmount (1000) + WasteCost (100), never deduplicated - the
+    // warning signals a *possible* overlap, it never alters the total.
+    expect(data.currentYearCost).toBe(1100)
+    expect(data.currentYearWarnings).toHaveLength(1)
+    expect(data.currentYearWarnings[0]?.type).toBe('possible_duplicate_waste')
   })
 
   it('aggregates real repository data', async () => {
@@ -209,9 +248,15 @@ describe('getDashboardData (integration against IndexedDB)', () => {
 
     const data = await getDashboardData(new Date('2026-09-16T00:00:00.000Z'))
     expect(data.currentMonthCost).toBe(200)
+    // 2026 has no Bill/WasteCost, only the ce-a CostEntry -> 200, same as before.
     expect(data.currentYearCost).toBe(200)
-    expect(data.previousYearCost).toBe(100)
-    expect(data.currentYearChangePercent).toBe(100)
+    // Phase 9: previousYearCost (2025) now combines Bill.totalAmount (the
+    // default bill() fixture below, year 2025, 2486.4) with the manual
+    // ce-b CostEntry (100) via the central cost projection - no longer
+    // CostEntry-only, since the Dashboard's headline cards now read from
+    // the same pipeline as /kostenuebersicht (see dashboard.ts).
+    expect(data.previousYearCost).toBe(2586.4)
+    expect(data.currentYearChangePercent).toBeCloseTo(((200 - 2586.4) / 2586.4) * 100, 5)
     expect(data.upcomingContracts).toHaveLength(1)
     expect(data.latestBill?.billId).toBe('b-1')
     expect(data.documentsSummary).toEqual({ total: 1, needsReview: 1 })
