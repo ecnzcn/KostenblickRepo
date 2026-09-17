@@ -122,6 +122,12 @@ Seit Phase 9 ist `domain/usecases/centralCosts.ts` sowie
 Kostenübersicht"-Abschnitt unten) – ein reines Read-Model-Modul ohne neue
 Entity und ohne neuen IndexedDB-Store; `DATABASE_VERSION` bleibt bei 2.
 
+Phase 10 (siehe „Datenqualität, Erreichbarkeit & technische
+Konsolidierung"-Abschnitt unten) hat keine Ordnerstruktur verändert – nur
+ein additives `Bill`-Feld, eine deaktivierte Schreibstelle in
+`database/repository.ts` und eine ergänzte Settings-Navigation.
+`DATABASE_VERSION` bleibt bei 2.
+
 ## Domain Models
 
 Mindestens folgende Entities:
@@ -779,11 +785,56 @@ Doppelzählungs-Warnung), Erweiterungen in `dashboard.test.ts`/
 `DashboardPage.test.tsx`/`SettingsPage.test.tsx` für die neue Quelle bzw.
 den neuen Link.
 
+### Phase 10 – Datenqualität, Erreichbarkeit & technische Konsolidierung
+
+**Bill**: `Bill.totalAmount` bleibt die alleinige Quelle für Aggregationen
+(Statistik, `centralCosts.ts`) – unverändert. Neu ist das additive, optionale
+Feld `Bill.totalAmountConfirmed?: boolean`: `true` kennzeichnet einen
+bewusst bestätigten Gesamtbetrag (z. B. aus einem geprüften Import), der
+legitim von der Summe der Positionen abweichen darf; `false`/`undefined`
+bedeutet, `totalAmount` ist einfach aus den Positionen abgeleitet, wie bei
+einer normalen manuellen Abrechnung. `createBillWithItems` setzt das Feld
+automatisch anhand von `input.totalAmount`. `updateBillWithItems`
+überschreibt einen bestätigten Betrag beim Bearbeiten **nicht** mehr
+automatisch – auch nicht, wenn sich Kostenpositionen ändern. Eine
+Neuberechnung erfolgt ausschließlich über die explizite Nutzeraktion „Aus
+Positionen neu berechnen" (`BillInput.recalculateTotalAmount`), nie über
+einen impliziten Zahlenvergleich. `BillFormPage` zeigt bei einer bestätigten
+Bill bestätigten Betrag, aktuelle Positionssumme und Differenz nebeneinander
+an, bevor der Nutzer sich entscheidet.
+
+**SyncQueue**: Die beiden produktiven Aufrufe von `enqueueSyncChange()` in
+`database/repository.ts` (`save()`/`delete()`) wurden entfernt, da bislang
+kein Consumer existiert und die Queue sonst unbegrenzt und folgenlos
+wächst. Der `syncQueue`-Store, `SyncQueueItem`, sowie
+`getPendingSyncChanges()`/`removeSyncChange()` bleiben als vorbereitete
+Infrastruktur bestehen. Die eigentlichen Sync-Metadaten (`updatedAt`,
+`syncVersion`, `deletedAt`) werden von `withSyncMetadata()` weiterhin
+unverändert gepflegt – unabhängig von der Queue.
+
+**Settings**: `/kosten` (bislang ohne dauerhaften Navigationszugang) ist
+jetzt in `SettingsPage.tsx` verlinkt, im bestehenden Muster der anderen
+sekundären Bereiche. Der zuvor funktionslose „Synchronisierung"-Menüpunkt
+wurde entfernt, statt eine nicht existierende Funktion anzudeuten.
+
+**Tote Felder**: `CostEntry.contractId` und die ungenutzten
+`CostSource`-Varianten `'bill'`/`'contract'`/`'import'` (nur `'manual'`
+wird tatsächlich verwendet) bleiben unverändert bestehen. Ihre künftige
+Bedeutung ist unklar – möglicherweise für eine nie gebaute, zu `billId`
+symmetrische Verknüpfung/Dedup-Logik gegenüber `Contract` vorgesehen –,
+daher werden sie bewusst nicht entfernt.
+
 ### Sync
 
 Abstraktion über `SyncService` mit `sync()`, `pushChanges()`,
 `pullChanges()`, `resolveConflict()`. V1 nutzt einen Mock/lokalen Sync.
-Konfliktstrategie: **Last Write Wins** anhand von `updatedAt`.
+Konfliktstrategie: **Last Write Wins** anhand von `updatedAt`. Die
+`syncQueue`-Infrastruktur (Store, `SyncQueueItem`, `enqueueSyncChange()`,
+`getPendingSyncChanges()`, `removeSyncChange()`) existiert bereits
+vorbereitend, ist seit Phase 10 aber nicht mehr an `save()`/`delete()`
+angeschlossen – die Population bleibt deaktiviert, bis ein echter
+`SyncService` als Consumer existiert. Keine Fake-Synchronisierung: solange
+kein Consumer existiert, wird auch keine Warteschlange dafür gefüllt.
 
 ## PWA-Regeln
 
