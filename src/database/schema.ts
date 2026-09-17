@@ -2,7 +2,7 @@ import type { DBSchema } from 'idb'
 import type { Bill, BillItem, Category, Contract, CostEntry, Document, Property, Reminder, User, WasteCost, SyncQueueItem } from '../domain/models/entities'
 
 export const DATABASE_NAME = 'kostenblick'
-export const DATABASE_VERSION = 1
+export const DATABASE_VERSION = 2
 
 export const STORE_NAMES = {
   users: 'users',
@@ -15,8 +15,16 @@ export const STORE_NAMES = {
   contracts: 'contracts',
   reminders: 'reminders',
   documents: 'documents',
+  documentFiles: 'documentFiles',
   syncQueue: 'syncQueue',
 } as const
+
+/** Raw bytes for a Document, kept out of the `documents` store so entity
+ * records (and any future sync payloads) never carry Base64/Blob data. */
+export interface DocumentFileRecord {
+  id: string
+  blob: Blob
+}
 
 export type StoreName = keyof typeof STORE_NAMES
 
@@ -31,5 +39,6 @@ export interface KostenblickDB extends DBSchema {
   contracts: { key: string; value: Contract; indexes: { userId: string; categoryId: string; endDate: string; calculatedCancellationDate: string; updatedAt: string; deletedAt: string } }
   reminders: { key: string; value: Reminder; indexes: { userId: string; contractId: string; reminderDate: string; status: string; updatedAt: string; deletedAt: string } }
   documents: { key: string; value: Document; indexes: { userId: string; type: string; updatedAt: string; deletedAt: string } }
+  documentFiles: { key: string; value: DocumentFileRecord }
   syncQueue: { key: string; value: SyncQueueItem; indexes: { entityType: string; entityId: string; queuedAt: string } }
 }
