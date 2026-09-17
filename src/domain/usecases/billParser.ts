@@ -1,6 +1,7 @@
 import type { Category } from '../models/entities'
 import type { ParsedBill, ParsedBillItem, ParsedField } from '../models/ocr'
 import { parseGermanAmount } from '../../utils/money'
+import { normalizeOcrText } from './ocrNormalization'
 
 /**
  * Turns raw OCR text into a ParsedBill. Pure and OCR-provider-agnostic: it
@@ -18,7 +19,14 @@ import { parseGermanAmount } from '../../utils/money'
 
 const AMOUNT_PATTERN = '(\\d{1,3}(?:\\.\\d{3})+,\\d{2}|\\d+,\\d{2}|\\d+\\.\\d{2}|\\d+)'
 const AMOUNT_REGEX = new RegExp(AMOUNT_PATTERN)
-const ITEM_LINE_REGEX = new RegExp(`^(.{2,60}?)[\\s:]{2,}${AMOUNT_PATTERN}\\s*€?\\s*$`)
+// Item lines require a real decimal amount (cents included) - unlike the
+// general AMOUNT_PATTERN above, this deliberately excludes the bare-integer
+// alternative, since a stray number ("Seite 2 von 5") would otherwise be
+// misread as a cost position. Only one separating space is required rather
+// than two: real OCR output (Tesseract) reconstructs a line's words with
+// single spaces, losing a printed document's original column alignment.
+const ITEM_AMOUNT_PATTERN = '(\\d{1,3}(?:\\.\\d{3})+,\\d{2}|\\d+,\\d{2}|\\d+\\.\\d{2})'
+const ITEM_LINE_REGEX = new RegExp(`^(.{2,60}?)[\\s:]{1,}${ITEM_AMOUNT_PATTERN}\\s*€?\\s*$`)
 
 const TOTAL_LABEL_PATTERNS = [
   /gesamtkosten\s*:?/i,
@@ -171,7 +179,8 @@ function toField<T>(match: { value: T; confidence: number; sourceText: string } 
 }
 
 export function parseBillText(rawText: string, categories: Category[]): ParsedBill {
-  const lines = rawText.split(/\r?\n/)
+  const normalizedText = normalizeOcrText(rawText)
+  const lines = normalizedText.split('\n')
 
   const year = findYear(lines)
   const period = findPeriod(lines)
@@ -191,6 +200,6 @@ export function parseBillText(rawText: string, categories: Category[]): ParsedBi
     totalAmount: toField(total),
     advancePayments: toField(advance),
     items,
-    rawText,
+    rawText: normalizedText,
   }
 }
