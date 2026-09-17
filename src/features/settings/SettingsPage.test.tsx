@@ -27,6 +27,11 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('link', { name: 'Dokumente' })).toHaveAttribute('href', '#/dokumente')
   })
 
+  it('links "Müllkosten" to the waste costs page', () => {
+    renderPage()
+    expect(screen.getByRole('link', { name: 'Müllkosten' })).toHaveAttribute('href', '#/muell')
+  })
+
   it('shows all four reminder intervals enabled by default and persists a toggle', () => {
     renderPage()
 

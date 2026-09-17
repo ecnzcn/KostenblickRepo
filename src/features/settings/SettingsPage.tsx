@@ -15,7 +15,11 @@ export function SettingsPage() {
               Dokumente
             </Link>
           </li>
-          <li className="px-4 py-3 text-sm text-neutral-700">Müllkosten</li>
+          <li>
+            <Link to={ROUTES.waste} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
+              Müllkosten
+            </Link>
+          </li>
           <li>
             <Link to={ROUTES.reminders} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
               Erinnerungen

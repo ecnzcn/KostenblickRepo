@@ -18,6 +18,9 @@ import { DocumentsPage } from '../features/documents/DocumentsPage'
 import { RemindersPage } from '../features/reminders/RemindersPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { StatisticsPage } from '../features/statistics/StatisticsPage'
+import { WasteCostDetailPage } from '../features/waste/WasteCostDetailPage'
+import { WasteCostFormPage } from '../features/waste/WasteCostFormPage'
+import { WasteCostsPage } from '../features/waste/WasteCostsPage'
 import { useDueReminderNotifications } from '../hooks/useDueReminderNotifications'
 
 export function App() {
@@ -50,6 +53,11 @@ export function App() {
 
           <Route path={ROUTES.documents} element={<DocumentsPage />} />
           <Route path={ROUTES.documentDetailPattern} element={<DocumentDetailPage />} />
+
+          <Route path={ROUTES.waste} element={<WasteCostsPage />} />
+          <Route path={ROUTES.wasteNew} element={<WasteCostFormPage mode="create" />} />
+          <Route path={ROUTES.wasteEditPattern} element={<WasteCostFormPage mode="edit" />} />
+          <Route path={ROUTES.wasteDetailPattern} element={<WasteCostDetailPage />} />
 
           <Route path={ROUTES.settings} element={<SettingsPage />} />
           <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
