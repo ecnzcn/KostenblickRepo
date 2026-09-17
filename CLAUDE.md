@@ -110,6 +110,12 @@ Seit Phase 7 ist `features/documents/` befüllt (siehe
 bereits seit Phase 4 (Bill-Import) und wurden in Phase 7 erweitert statt
 neu gebaut.
 
+Seit Phase 8 ist `features/waste/` befüllt (siehe
+„Müllkostenverwaltung"-Abschnitt unten). Die `WasteCost`-Entity und ihr
+IndexedDB-Store bestanden bereits seit Phase 2 und wurden unverändert
+weiterverwendet (bis auf eine additive Erweiterung von `WasteCategory` um
+`bulky`/„Sperrmüll" – kein Feld, keine Migration).
+
 ## Domain Models
 
 Mindestens folgende Entities:
@@ -527,7 +533,8 @@ Datensatz).
 **WasteCost**: `WasteCost.documentId` existiert im Domain-Modell, aber es
 gibt in Phase 7 weiterhin **keine** WasteCost-UI (`features/waste/` bleibt
 `.gitkeep`) – das Anlegen eines Aufbaus einer vollständigen
-Müllkosten-Verwaltung wäre eine eigene, hier nicht beauftragte Phase. Die
+Müllkosten-Verwaltung wäre eine eigene, hier nicht beauftragte Phase (siehe
+„Müllkostenverwaltung" weiter unten – dort seit Phase 8 umgesetzt). Die
 generische Referenzprüfung deckt WasteCost dennoch mit ab, falls/wenn diese
 UI einmal entsteht.
 
@@ -551,18 +558,100 @@ sind reine, lokale Funktionen über die bereits geladene Liste – keine
 externe Suche, keine wiederholten IndexedDB-Zugriffe pro Tastenanschlag.
 
 **Detailseite** (`/dokumente/:id`): zeigt Metadaten, OCR-Status/-Text und
-die verknüpfte Entity (klickbar zu Bill/Contract, sofern eine Detailseite
-existiert – für WasteCost aktuell nicht, siehe oben). Die Vorschau
-(`DocumentViewer`, seit Phase 4 vorhanden) lädt den Blob erst bei Klick auf
-„Vorschau anzeigen" – nie automatisch beim Öffnen der Seite.
+die verknüpfte Entity (klickbar zu Bill/Contract/WasteCost, sofern eine
+Detailseite existiert – seit Phase 8 auch für WasteCost, siehe unten). Die
+Vorschau (`DocumentViewer`, seit Phase 4 vorhanden) lädt den Blob erst bei
+Klick auf „Vorschau anzeigen" – nie automatisch beim Öffnen der Seite.
 
 **Teststrategie**: `documents.test.ts` (Checksum, Replace, Validierung),
 `documentLifecycle.usecase.test.ts` (Reference-Detection, Cascade-Löschung
-bei Bill/Contract, `deleteDocumentAndClearReferences`, Overview-Listing),
-`documents.ui.test.tsx` (Liste, Suche, Filter, Detail, Löschen mit/ohne
-Bestätigung), plus Erweiterungen in `contracts.ui.test.tsx`/
+bei Bill/Contract/WasteCost, `deleteDocumentAndClearReferences`,
+Overview-Listing), `documents.ui.test.tsx` (Liste, Suche, Filter, Detail,
+Löschen mit/ohne Bestätigung), plus Erweiterungen in `contracts.ui.test.tsx`/
 `bills.ui.test.tsx`/`DashboardPage.test.tsx`/`SettingsPage.test.tsx` für
 die jeweiligen Integrationen.
+
+**Bugfix in Phase 8**: `PageHeader`s `<h1>`/`<p>` hatten kein
+`overflow-wrap`/`break-words` – ein langer, leerzeichenloser Titel (z. B.
+ein Dateiname wie `gebuehrenbescheid.pdf`) lief dadurch auf Mobile über den
+Viewport hinaus (horizontales Scrollen). Betraf potenziell jede Seite mit
+einem `PageHeader`, wurde aber erst durch einen realistisch langen
+Dateinamen in der Phase-8-QA sichtbar; behoben durch `break-words` auf
+Titel und Untertitel.
+
+### Müllkostenverwaltung (Phase 8, `domain/usecases/wasteCosts.ts`,
+`features/waste/`)
+
+Macht die bereits seit Phase 2 bestehende `WasteCost`-Entity und ihren
+IndexedDB-Store nutzbar – **keine** neue Entity, **keine** neue
+IndexedDB-Version. Einzige additive Domain-Änderung: `WasteCategory` wurde
+um `'bulky'` (Sperrmüll) ergänzt (reiner String-Literal-Typ, kein Feld,
+kein Schema-Wechsel).
+
+**Kategorien**: zentral in `src/constants/waste.ts`
+(`WASTE_CATEGORY_LABELS`/`WASTE_CATEGORY_OPTIONS`), nicht im generischen
+`Category`-Entity-System (das ist für Cost-/Bill-Kategorien mit Icon
+gedacht, passt fachlich nicht zu den sechs fest vorgegebenen
+Müllkosten-Kategorien) und nicht mehrfach in UI-Komponenten hartkodiert.
+
+**Architektur**: `UI (WasteCostsPage/WasteCostFormPage/
+WasteCostDetailPage) → domain/usecases/wasteCosts.ts → wasteCostRepository
+→ IndexedDB`. Wie bei Bills/Contracts/Costs ein reines Funktions-Use-Case-
+Modul, keine Service-Klasse. `getWasteCostSummary()` reicht die
+Jahresvergleichslogik an das bereits vorhandene, getestete
+`calculateYearOverYearChange()` (aus `domain/usecases/statistics/
+calculateYearComparison.ts`) durch, statt die 0-Vorjahr-/kein-Vorjahr-
+Sonderfälle ein zweites Mal zu implementieren.
+
+**Performance**: `listWasteCosts()` lädt alle Einträge genau einmal;
+Jahre, Jahresfilterung und die Jahres-/Kategoriensumme
+(`getWasteCostYears`/`listWasteCostsByYear`/`getWasteCostSummary`) sind
+reine Funktionen, die im Hook (`useWasteCosts`) per `useMemo` über die
+bereits geladene Liste laufen – ein Jahreswechsel im UI löst keinen
+erneuten IndexedDB-Zugriff aus.
+
+**Dokumentintegration**: Anders als bei Contract (wo das Dokument über
+eine separate `setContractDocument()`/`removeContractDocument()`-Aktion
+auf der Detailseite angehängt wird) ist das Dokument bei WasteCost ein
+ganz normales Feld von `WasteCostInput` – es wird direkt im Erfassen-/
+Bearbeiten-Formular gewählt (neue Datei hochladen **oder** ein bereits
+vorhandenes, noch nicht verknüpftes Dokument auswählen) und zusammen mit
+den übrigen Feldern gespeichert. `updateWasteCost()` vergleicht dafür den
+alten mit dem neuen `documentId` und räumt ein geändertes oder entferntes
+Dokument über die bestehende, referenzgeprüfte
+`deleteDocumentIfUnreferenced()` auf – nie wird ein Dokument gelöscht, das
+noch anderweitig gebraucht wird, und nie bleibt ein nicht mehr
+referenziertes Dokument liegen. `deleteWasteCost()` räumt beim Löschen des
+gesamten Eintrags ebenso auf. Ein neu hochgeladenes, aber dann am
+Speichern gescheitertes Dokument wird in `WasteCostFormPage` best-effort
+zurückgerollt (kein verwaistes Dokument bei einem fehlgeschlagenen
+Speichervorgang).
+
+**Dashboard**: eine eigene, kompakte Karte (`WasteCostsSummaryCard`) nutzt
+ausschließlich `getWasteCostSummary()` – keine eigene Berechnungslogik im
+Dashboard-Code. `getDashboardData()` lädt `wasteCostRepository.getAll()`
+zusätzlich zu den bestehenden Repositories und reicht das Ergebnis nur
+durch; die `CostEntry`-basierte Dashboard-Pipeline bleibt unangetastet.
+
+**Statistik-Integration**: bewusst (noch) nicht vorgenommen. Die
+Statistik-Pipeline (Phase 5) liest bewusst ausschließlich aus
+`billRepository`/`billItemRepository`, um Doppelzählung zu vermeiden (siehe
+„Statistik"-Abschnitt oben). `WasteCost` dort einfach zusätzlich in
+dieselbe Summe zu addieren, würde dieses Prinzip verletzen und wäre eine
+unsaubere Erweiterung ohne konzeptionelle Anpassung der Datenquellen-
+Trennung. Müllkosten sind in Phase 8 daher ausschließlich über `/muell`
+und die Dashboard-Karte sichtbar; eine spätere, bewusste Zusammenführung
+aller Kostenquellen (Bills, CostEntry, WasteCost) für die Statistik ist ein
+eigenes, künftiges Arbeitspaket.
+
+**Teststrategie**: `wasteCosts.usecase.test.ts` (Validierung, CRUD,
+Jahresfilter, Jahres-/Kategoriensumme, Jahresvergleich inkl.
+0-Vorjahr-/kein-Vorjahr-Fälle), Erweiterung von
+`documentLifecycle.usecase.test.ts` um WasteCost+Document-Fälle (create→
+read/update/delete, Dokument wechseln/entfernen, Referenzprüfung beim
+Löschen), `waste.ui.test.tsx` (Liste, Jahresfilter, Empty States, Erfassen,
+Bearbeiten, Löschen, Dokument hochladen/auswählen/öffnen), plus
+Erweiterungen in `DashboardPage.test.tsx`/`SettingsPage.test.tsx`.
 
 ### Sync
 

@@ -26,6 +26,10 @@ export const ROUTES = {
   reminders: '/erinnerungen',
   documents: '/dokumente',
   documentDetailPattern: '/dokumente/:id',
+  waste: '/muell',
+  wasteNew: '/muell/neu',
+  wasteDetailPattern: '/muell/:id',
+  wasteEditPattern: '/muell/:id/bearbeiten',
   settings: '/mehr',
 } as const
 
@@ -55,6 +59,14 @@ export function costEditPath(id: string): string {
 
 export function documentDetailPath(id: string): string {
   return `/dokumente/${id}`
+}
+
+export function wasteDetailPath(id: string): string {
+  return `/muell/${id}`
+}
+
+export function wasteEditPath(id: string): string {
+  return `/muell/${id}/bearbeiten`
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [

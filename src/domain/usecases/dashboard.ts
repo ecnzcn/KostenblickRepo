@@ -5,10 +5,12 @@ import {
   costEntryRepository,
   documentRepository,
   userRepository,
+  wasteCostRepository,
 } from '../repositories/indexedDbRepositories'
 import type { BalanceType, Bill, Category, Contract, CostEntry, Document } from '../models/entities'
 import { BILL_TYPE_LABELS } from './bills'
 import { calculatePercentageChange } from './percentageChange'
+import { getWasteCostSummary, type WasteCostYearSummary } from './wasteCosts'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DEFAULT_UPCOMING_CONTRACTS_LIMIT = 5
@@ -61,6 +63,7 @@ export interface DashboardData {
   upcomingContracts: ContractDeadline[]
   latestBill?: BillSummary
   documentsSummary: DocumentsSummary
+  wasteCostsSummary: WasteCostYearSummary
 }
 
 function monthKey(year: number, month: number): string {
@@ -181,13 +184,14 @@ export function getDocumentsSummary(documents: Document[]): DocumentsSummary {
 }
 
 export async function getDashboardData(referenceDate: Date = new Date()): Promise<DashboardData> {
-  const [users, costEntries, categories, contracts, bills, documents] = await Promise.all([
+  const [users, costEntries, categories, contracts, bills, documents, wasteCosts] = await Promise.all([
     userRepository.getAll(),
     costEntryRepository.getAll(),
     categoryRepository.getAll(),
     contractRepository.getAll(),
     billRepository.getAll(),
     documentRepository.getAll(),
+    wasteCostRepository.getAll(),
   ])
 
   const currentYear = referenceDate.getUTCFullYear()
@@ -221,5 +225,6 @@ export async function getDashboardData(referenceDate: Date = new Date()): Promis
     upcomingContracts: getUpcomingContractDeadlines(contracts, categories, referenceDate),
     latestBill: getLatestBill(bills),
     documentsSummary: getDocumentsSummary(documents),
+    wasteCostsSummary: getWasteCostSummary(wasteCosts, currentYear),
   }
 }

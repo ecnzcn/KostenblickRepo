@@ -8,6 +8,7 @@ import { LatestBillCard } from './components/LatestBillCard'
 import { MonthlyCostCard } from './components/MonthlyCostCard'
 import { QuickActions } from './components/QuickActions'
 import { UpcomingContractsCard } from './components/UpcomingContractsCard'
+import { WasteCostsSummaryCard } from './components/WasteCostsSummaryCard'
 import { YearlyCostCard } from './components/YearlyCostCard'
 import { useDashboardData } from './hooks/useDashboardData'
 
@@ -48,7 +49,10 @@ export function DashboardPage() {
             <LatestBillCard bill={data.latestBill} />
           </div>
 
-          <DocumentsSummaryCard summary={data.documentsSummary} />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <DocumentsSummaryCard summary={data.documentsSummary} />
+            <WasteCostsSummaryCard summary={data.wasteCostsSummary} />
+          </div>
 
           <QuickActions />
         </div>

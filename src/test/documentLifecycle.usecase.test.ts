@@ -33,6 +33,13 @@ import {
   replaceDocumentFile,
   saveDocumentFile,
 } from '../domain/usecases/documents'
+import {
+  createWasteCost,
+  deleteWasteCost,
+  getWasteCost,
+  updateWasteCost,
+  type WasteCostInput,
+} from '../domain/usecases/wasteCosts'
 
 beforeEach(async () => {
   await deleteDatabase()
@@ -49,6 +56,13 @@ const baseContractInput = (overrides: Partial<ContractInput> = {}): ContractInpu
   startDate: '2025-01-01T00:00:00.000Z',
   autoRenewal: true,
   reminderEnabled: false,
+  ...overrides,
+})
+
+const baseWasteCostInput = (overrides: Partial<WasteCostInput> = {}): WasteCostInput => ({
+  year: 2026,
+  category: 'residual',
+  amount: 92,
   ...overrides,
 })
 
@@ -474,5 +488,87 @@ describe('setContractDocument / removeContractDocument', () => {
     const contract = await createContract(baseContractInput())
     const result = await removeContractDocument(contract)
     expect(result).toEqual(contract)
+  })
+})
+
+describe('WasteCost + Document lifecycle', () => {
+  it('create -> read: a document attached on create is retrievable via getLinkedEntity', async () => {
+    const document = await saveDocumentFile(makeFile('gebuehrenbescheid.pdf', 'application/pdf'), 'waste')
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: document.id }))
+
+    const reloaded = await getWasteCost(wasteCost.id)
+    expect(reloaded?.documentId).toBe(document.id)
+    expect(await getLinkedEntity(document.id)).toEqual({
+      entityType: 'waste',
+      entityId: wasteCost.id,
+      label: 'Müllkosten 2026',
+    })
+  })
+
+  it('create -> update: changing fields without touching documentId keeps the attached document', async () => {
+    const document = await saveDocumentFile(makeFile('gebuehrenbescheid.pdf', 'application/pdf'), 'waste')
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: document.id }))
+
+    const updated = await updateWasteCost(wasteCost.id, baseWasteCostInput({ documentId: document.id, amount: 120 }))
+
+    expect(updated.amount).toBe(120)
+    expect(updated.documentId).toBe(document.id)
+    expect((await getDocument(document.id))?.deletedAt).toBeNull()
+  })
+
+  it('create -> update: removing the document (documentId undefined) deletes it once unreferenced', async () => {
+    const document = await saveDocumentFile(makeFile('gebuehrenbescheid.pdf', 'application/pdf'), 'waste')
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: document.id }))
+
+    const updated = await updateWasteCost(wasteCost.id, baseWasteCostInput({ documentId: undefined }))
+
+    expect(updated.documentId).toBeUndefined()
+    expect((await getDocument(document.id))?.deletedAt).not.toBeNull()
+  })
+
+  it('create -> update: swapping to a different document cleans up the previous one once unreferenced', async () => {
+    const documentA = await saveDocumentFile(makeFile('a.pdf', 'application/pdf'), 'waste')
+    const documentB = await saveDocumentFile(makeFile('b.pdf', 'application/pdf'), 'waste')
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: documentA.id }))
+
+    const updated = await updateWasteCost(wasteCost.id, baseWasteCostInput({ documentId: documentB.id }))
+
+    expect(updated.documentId).toBe(documentB.id)
+    expect((await getDocument(documentA.id))?.deletedAt).not.toBeNull()
+    expect((await getDocument(documentB.id))?.deletedAt).toBeNull()
+  })
+
+  it('create -> delete: deletes the linked document when nothing else references it', async () => {
+    const document = await saveDocumentFile(makeFile('gebuehrenbescheid.pdf', 'application/pdf'), 'waste')
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: document.id }))
+
+    await deleteWasteCost(wasteCost.id)
+
+    expect((await getDocument(document.id))?.deletedAt).not.toBeNull()
+  })
+
+  it('create -> delete: keeps the document when another live entity still references it', async () => {
+    const document = await saveDocumentFile(makeFile('shared.pdf', 'application/pdf'), 'other')
+    const { bill } = await createBillWithItems(baseBillInput({ documentId: document.id }))
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: document.id }))
+
+    await deleteWasteCost(wasteCost.id)
+
+    expect((await getDocument(document.id))?.deletedAt).toBeNull()
+    expect((await getBill(bill.id))?.documentId).toBe(document.id)
+  })
+
+  it('is safe to delete a waste cost entry with no document', async () => {
+    const wasteCost = await createWasteCost(baseWasteCostInput())
+    await expect(deleteWasteCost(wasteCost.id)).resolves.toBeUndefined()
+  })
+
+  it('listDocumentsOverview resolves a waste cost as the linked entity', async () => {
+    const document = await saveDocumentFile(makeFile('gebuehrenbescheid.pdf', 'application/pdf'), 'waste')
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: document.id }))
+
+    const overview = await listDocumentsOverview()
+    const entry = overview.find((e) => e.document.id === document.id)
+    expect(entry?.linkedEntity).toEqual({ entityType: 'waste', entityId: wasteCost.id, label: 'Müllkosten 2026' })
   })
 })

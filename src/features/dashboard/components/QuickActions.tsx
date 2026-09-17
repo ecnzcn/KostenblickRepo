@@ -6,6 +6,7 @@ const ACTIONS = [
   { label: '+ Abrechnung importieren', to: ROUTES.billsImport },
   { label: '+ Vertrag', to: ROUTES.contractsNew },
   { label: 'Kosten erfassen', to: ROUTES.costsNew },
+  { label: '+ Müllkosten', to: ROUTES.wasteNew },
 ] as const
 
 export function QuickActions() {

@@ -11,10 +11,12 @@ später cloud-synchronisierbar.
 > Mehrjahresvergleich, Kategorie-Aufschlüsselung, Top-Kostenpositionen,
 > monatliche Entwicklung soweit Daten das hergeben), automatische
 > Kündigungsfrist-Erinnerungen (`/erinnerungen`, inkl. lokaler
-> Benachrichtigungen) sowie eine zentrale Dokumentenverwaltung
-> (`/dokumente`: Suche, Filter, Vorschau, Verknüpfung zu Abrechnung/Vertrag)
-> sind nutzbar. Echte Cloud-Synchronisierung folgt in weiteren Phasen –
-> siehe [`CLAUDE.md`](./CLAUDE.md).
+> Benachrichtigungen), eine zentrale Dokumentenverwaltung (`/dokumente`:
+> Suche, Filter, Vorschau, Verknüpfung zu Abrechnung/Vertrag/Müllkosten)
+> sowie eine Müllkostenverwaltung (`/muell`: Jahresübersicht,
+> Kategorien-Aufschlüsselung, Jahresvergleich) sind nutzbar. Echte
+> Cloud-Synchronisierung folgt in weiteren Phasen – siehe
+> [`CLAUDE.md`](./CLAUDE.md).
 
 ## Features
 
@@ -25,7 +27,11 @@ Phasenplan):
   lokaler OCR-Erkennung** (läuft vollständig im Browser, keine Cloud-OCR;
   Vorschläge, die immer manuell geprüft werden müssen, siehe unten)
 - jährliche Kostenhistorien und Jahresvergleiche
-- Müllkosten-Verwaltung
+- Müllkosten-Verwaltung (`/muell`): Erfassen/Bearbeiten/Löschen pro Jahr
+  und Kategorie (Restmüll, Biomüll, Gelber Sack/Gelbe Tonne, Papier,
+  Sperrmüll, Weitere Müllkosten), Jahresfilter, Jahres- und
+  Kategoriensummen, Vorjahresvergleich, optionale Dokumentverknüpfung
+  (z. B. Gebührenbescheid)
 - Strom-, Internet- und Telekommunikationsverträge inkl. automatischer
   Kündigungsfrist-Berechnung
 - Vertragsstatus (Aktiv/Bald fällig/Dringend/Abgelaufen) und automatische
@@ -123,6 +129,24 @@ sonstige Unterlagen) sind zentral unter `/dokumente` einsehbar, erreichbar
 - Verträge können nachträglich über die Vertrags-Detailseite ein
   Vertragsdokument erhalten (Upload direkt dort, keine separate
   Import-Maske nötig).
+
+## Müllkostenverwaltung
+
+Unter `/muell` (erreichbar über „Mehr" → Müllkosten, das Dashboard oder
+den Schnellzugriff) lassen sich Müllgebühren pro Jahr und Kategorie
+erfassen, bearbeiten und löschen.
+
+- **Jahresübersicht**: ein Jahresfilter (‹ Jahr ›) zeigt Gesamtsumme,
+  Kategorien-Aufschlüsselung und den Vergleich zum Vorjahr (absolute und
+  prozentuale Veränderung) für das gewählte Jahr; ohne Vorjahresdaten wird
+  „Kein Vergleich verfügbar" statt einer erfundenen Zahl angezeigt.
+- **Erfassen/Bearbeiten**: dasselbe Formular für beide Fälle - Jahr,
+  Kategorie, Betrag und optionale Notiz, dazu wahlweise ein neues Dokument
+  hochladen oder ein bereits vorhandenes, noch nicht verknüpftes Dokument
+  auswählen (Wiederverwendung der zentralen Dokumentenverwaltung aus
+  Phase 7 - keine zweite Dokumentlogik).
+- **Löschen**: mit Bestätigung; ein verknüpftes Dokument wird dabei nur
+  gelöscht, wenn keine andere Stelle mehr darauf verweist.
 
 ## Lokale Entwicklung
 

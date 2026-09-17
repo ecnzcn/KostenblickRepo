@@ -20,7 +20,7 @@ export type CancellationUnit = 'days' | 'weeks' | 'months' | 'years'
 export type ReminderType = 'cancellation' | 'contract_end' | 'custom'
 export type ReminderStatus = 'pending' | 'sent' | 'dismissed'
 export type DocumentType = 'bill' | 'contract' | 'waste' | 'other'
-export type WasteCategory = 'residual' | 'organic' | 'paper' | 'recycling' | 'other'
+export type WasteCategory = 'residual' | 'organic' | 'paper' | 'recycling' | 'bulky' | 'other'
 
 export interface User extends SyncableEntity {
   displayName: string

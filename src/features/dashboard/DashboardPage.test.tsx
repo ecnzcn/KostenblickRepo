@@ -43,6 +43,7 @@ const emptyData: DashboardData = {
   categoryCosts: [],
   upcomingContracts: [],
   documentsSummary: { total: 0, needsReview: 0 },
+  wasteCostsSummary: { year: 2026, total: 0, byCategory: [] },
 }
 
 const populatedData: DashboardData = {
@@ -76,6 +77,14 @@ const populatedData: DashboardData = {
     importedAt: '2026-09-16T00:00:00.000Z',
   },
   documentsSummary: { total: 3, needsReview: 1 },
+  wasteCostsSummary: {
+    year: 2026,
+    total: 186.4,
+    byCategory: [{ category: 'residual', amount: 186.4 }],
+    previousYearTotal: 174.2,
+    change: 12.2,
+    changePercent: 7,
+  },
 }
 
 describe('DashboardPage', () => {
@@ -165,5 +174,24 @@ describe('DashboardPage', () => {
     await waitForLoadingToFinish()
 
     expect(screen.getByText('Noch keine Dokumente vorhanden.')).toBeInTheDocument()
+  })
+
+  it('shows the waste costs summary with the year-over-year change', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Müllkosten')).toBeInTheDocument()
+    expect(screen.getByText(money(186.4))).toBeInTheDocument()
+    expect(screen.getByText(/\+7,0 % gegenüber 2025/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Müllkosten anzeigen' })).toHaveAttribute('href', '#/muell')
+  })
+
+  it('shows an empty waste costs state when there are none for the current year', async () => {
+    getDashboardDataMock.mockResolvedValue(emptyData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText(/Noch keine Müllkosten für \d+ erfasst\./)).toBeInTheDocument()
   })
 })
