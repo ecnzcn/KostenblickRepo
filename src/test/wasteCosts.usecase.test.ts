@@ -30,20 +30,20 @@ describe('validateWasteCostInput', () => {
     expect(validateWasteCostInput(baseInput())).toEqual([])
   })
 
-  it('accepts an amount of exactly 0', () => {
-    expect(validateWasteCostInput(baseInput({ amount: 0 }))).toEqual([])
+  it('rejects an amount of exactly 0', () => {
+    expect(validateWasteCostInput(baseInput({ amount: 0 }))).toContain('Betrag muss größer als 0 sein.')
   })
 
   it('rejects a negative amount', () => {
-    expect(validateWasteCostInput(baseInput({ amount: -1 }))).toContain(
-      'Betrag muss eine nicht-negative Zahl sein.',
-    )
+    expect(validateWasteCostInput(baseInput({ amount: -1 }))).toContain('Betrag muss größer als 0 sein.')
   })
 
   it('rejects a non-finite amount', () => {
-    expect(validateWasteCostInput(baseInput({ amount: Number.NaN }))).toContain(
-      'Betrag muss eine nicht-negative Zahl sein.',
-    )
+    expect(validateWasteCostInput(baseInput({ amount: Number.NaN }))).toContain('Betrag muss größer als 0 sein.')
+  })
+
+  it('accepts a positive amount', () => {
+    expect(validateWasteCostInput(baseInput({ amount: 92 }))).toEqual([])
   })
 
   it('rejects a missing category', () => {

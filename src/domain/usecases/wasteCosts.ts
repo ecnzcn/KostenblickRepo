@@ -28,7 +28,7 @@ export function validateWasteCostInput(input: WasteCostInput): string[] {
     errors.push('Jahr ist ungültig.')
   }
   if (!input.category) errors.push('Kategorie ist erforderlich.')
-  if (!Number.isFinite(input.amount) || input.amount < 0) errors.push('Betrag muss eine nicht-negative Zahl sein.')
+  if (!Number.isFinite(input.amount) || input.amount <= 0) errors.push('Betrag muss größer als 0 sein.')
   return errors
 }
 
