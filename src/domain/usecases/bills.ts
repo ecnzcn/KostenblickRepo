@@ -27,6 +27,14 @@ export interface BillInput {
   /** Set when this Bill was created via the OCR import workflow, linking it
    * to its original Document. */
   documentId?: string
+  /** The confirmed total amount (e.g. an OCR-recognized value the user
+   * reviewed and possibly corrected). When omitted - the manual-entry
+   * default - totalAmount is derived from the sum of items, as before. A
+   * document's printed total can legitimately differ from the sum of the
+   * cost positions recognized from it (missed line items, rounding,
+   * un-itemized fees); the review screen lets the user save despite that
+   * discrepancy, so whatever they confirmed here is what gets persisted. */
+  totalAmount?: number
 }
 
 export interface BillWithItems {
@@ -59,6 +67,9 @@ export function validateBillInput(input: BillInput): string[] {
   if (!Number.isFinite(input.advancePayments) || input.advancePayments < 0) {
     errors.push('Vorauszahlungen dürfen nicht negativ sein.')
   }
+  if (input.totalAmount !== undefined && (!Number.isFinite(input.totalAmount) || input.totalAmount < 0)) {
+    errors.push('Gesamtsumme muss eine gültige, nicht-negative Zahl sein.')
+  }
   for (const item of input.items) {
     if (!item.categoryId) errors.push('Jede Kostenposition benötigt eine Kategorie.')
     if (!Number.isFinite(item.amount) || item.amount < 0) {
@@ -90,9 +101,10 @@ function buildItems(billId: string, items: BillItemInput[], now: string): BillIt
  * abstraction (src/database/repository.ts) does not support a single
  * transaction spanning multiple object stores, so this performs the Bill
  * write first and the BillItem writes after it, sequentially. If a
- * BillItem write fails partway through, the Bill and any already-saved
- * items remain persisted (no automatic rollback) - this is a known,
- * documented limitation rather than a true atomic operation. Extending the
+ * BillItem write fails partway through, this rolls back (deletes) the Bill
+ * and any items that did save, rather than leaving an orphaned, invisible
+ * partial Bill behind for a retry to pile another one onto - not a true
+ * atomic transaction, but self-healing on failure. Extending the
  * repository layer to accept an external multi-store transaction would be
  * a larger architectural change out of scope for this phase.
  */
@@ -103,7 +115,7 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
   const now = new Date().toISOString()
   const billId = generateId()
   const items = buildItems(billId, input.items, now)
-  const totalAmount = sumBillItems(items)
+  const totalAmount = input.totalAmount ?? sumBillItems(items)
   const { balance, balanceType } = calculateBillBalance(totalAmount, input.advancePayments)
 
   const bill: Bill = {
@@ -127,8 +139,16 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
 
   const savedBill = await billRepository.save(bill)
   const savedItems: BillItem[] = []
-  for (const item of items) {
-    savedItems.push(await billItemRepository.save(item))
+  try {
+    for (const item of items) {
+      savedItems.push(await billItemRepository.save(item))
+    }
+  } catch (error) {
+    for (const savedItem of savedItems) {
+      await billItemRepository.delete(savedItem.id).catch(() => undefined)
+    }
+    await billRepository.delete(savedBill.id).catch(() => undefined)
+    throw error
   }
 
   return { bill: savedBill, items: savedItems }

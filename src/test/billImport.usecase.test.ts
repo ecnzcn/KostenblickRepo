@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteDatabase } from '../database/database'
-import { createBillWithItems, getBill, listBillItems, removeBillDocument } from '../domain/usecases/bills'
+import { createBillWithItems, getBill, listBillItems, listBills, removeBillDocument } from '../domain/usecases/bills'
 import { deleteDocument, getDocument, saveDocumentFile } from '../domain/usecases/documents'
+import { billItemRepository } from '../domain/repositories/indexedDbRepositories'
 
 beforeEach(async () => {
   await deleteDatabase()
@@ -45,6 +46,63 @@ describe('createBillWithItems (OCR import path)', () => {
     expect(bill.ocrStatus).toBe('not_started')
     expect(items[0]?.confidence).toBe(1)
     expect(items[0]?.manuallyVerified).toBe(true)
+  })
+
+  it('persists an explicitly provided totalAmount instead of the sum of items, and reloads it unchanged', async () => {
+    const { bill } = await createBillWithItems({
+      type: 'annual_statement',
+      year: 2025,
+      advancePayments: 1200,
+      totalAmount: 1300,
+      items: [
+        { categoryId: 'heating', description: 'Heizung', amount: 620.12, confidence: 0.9 },
+        { categoryId: 'water', description: 'Wasser', amount: 184.3, confidence: 0.9 },
+      ],
+    })
+
+    expect(bill.totalAmount).toBe(1300)
+    expect(bill.balance).toBe(100)
+    expect(bill.balanceType).toBe('payment_due')
+
+    const reloaded = await getBill(bill.id)
+    expect(reloaded?.totalAmount).toBe(1300)
+  })
+
+  it('falls back to the sum of items when no totalAmount is given (manual-entry behavior unchanged)', async () => {
+    const { bill } = await createBillWithItems({
+      type: 'annual_statement',
+      year: 2025,
+      advancePayments: 0,
+      items: [
+        { categoryId: 'heating', description: 'Heizung', amount: 100 },
+        { categoryId: 'water', description: 'Wasser', amount: 50 },
+      ],
+    })
+
+    expect(bill.totalAmount).toBe(150)
+  })
+
+  it('rolls back the Bill if a BillItem write fails partway through, leaving no orphaned partial Bill', async () => {
+    const saveSpy = vi
+      .spyOn(billItemRepository, 'save')
+      .mockImplementationOnce((item) => Promise.resolve(item))
+      .mockImplementationOnce(() => Promise.reject(new Error('simulated write failure')))
+
+    await expect(
+      createBillWithItems({
+        type: 'annual_statement',
+        year: 2025,
+        advancePayments: 0,
+        items: [
+          { categoryId: 'heating', description: 'Heizung', amount: 100 },
+          { categoryId: 'water', description: 'Wasser', amount: 50 },
+        ],
+      }),
+    ).rejects.toThrow('simulated write failure')
+
+    expect(await listBills()).toHaveLength(0)
+
+    saveSpy.mockRestore()
   })
 })
 

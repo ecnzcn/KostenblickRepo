@@ -91,6 +91,14 @@ export function ImportBillPage() {
     setStep('processing')
     setProgress({ stage: 'loading', message: 'Dokument wird vorbereitet …' })
 
+    // Created before any async work starts (including saving the document)
+    // so "Abbrechen" is responsive the instant the processing screen
+    // appears - previously it was created only after saveDocumentFile()
+    // resolved, so a cancel click during that (normally brief, but not
+    // always negligible) window was silently dropped.
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     let createdDocument: Document
     try {
       createdDocument = await saveDocumentFile(file, 'bill')
@@ -98,11 +106,22 @@ export function ImportBillPage() {
     } catch {
       setFileError('Das Dokument konnte nicht gespeichert werden. Bitte versuche es erneut.')
       setStep('select')
+      abortControllerRef.current = undefined
       return
     }
 
-    const controller = new AbortController()
-    abortControllerRef.current = controller
+    if (controller.signal.aborted) {
+      // Cancelled while the document was still being saved.
+      try {
+        await deleteDocument(createdDocument.id)
+      } catch {
+        // Best-effort cleanup - nothing was ever linked to a Bill.
+      }
+      setSavedDocument(undefined)
+      setStep('select')
+      abortControllerRef.current = undefined
+      return
+    }
 
     try {
       const parsed = await ocrService.extractBillData(file, {
@@ -203,6 +222,8 @@ export function ImportBillPage() {
 
     const parsedYear = Number(year.value)
     const parsedAdvancePayments = parseGermanAmount(advancePayments.value)
+    const totalAmountText = totalAmount.value.trim()
+    const parsedTotalAmount = totalAmountText ? parseGermanAmount(totalAmountText) : null
     const parsedItems = items.map((item) => ({
       categoryId: item.categoryId,
       description: item.description,
@@ -215,6 +236,7 @@ export function ImportBillPage() {
     const validationErrors: string[] = []
     if (!Number.isInteger(parsedYear)) validationErrors.push('Abrechnungsjahr ist ungültig.')
     if (parsedAdvancePayments === null) validationErrors.push('Vorauszahlungen konnten nicht gelesen werden.')
+    if (totalAmountText && parsedTotalAmount === null) validationErrors.push('Erkannte Gesamtsumme konnte nicht gelesen werden.')
     for (const item of parsedItems) {
       if (!item.categoryId) validationErrors.push('Jede Kostenposition benötigt eine Kategorie.')
       if (Number.isNaN(item.amount)) validationErrors.push('Mindestens eine Kostenposition hat einen ungültigen Betrag.')
@@ -233,12 +255,15 @@ export function ImportBillPage() {
         periodStart: periodStart.value ? new Date(`${periodStart.value}T00:00:00.000Z`).toISOString() : undefined,
         periodEnd: periodEnd.value ? new Date(`${periodEnd.value}T00:00:00.000Z`).toISOString() : undefined,
         advancePayments: parsedAdvancePayments ?? 0,
+        totalAmount: parsedTotalAmount ?? undefined,
         documentId: savedDocument.id,
         items: parsedItems,
       })
       showToast('Abrechnung gespeichert')
       navigate(billDetailPath(bill.id))
-    } catch {
+    } catch (error) {
+      // Technical details only - never the document's OCR text/content.
+      console.error('Saving the imported bill failed', error)
       setErrors(['Die Abrechnung konnte nicht gespeichert werden. Bitte versuche es erneut.'])
     } finally {
       setSaving(false)

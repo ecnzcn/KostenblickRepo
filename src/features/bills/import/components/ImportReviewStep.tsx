@@ -64,8 +64,12 @@ export function ImportReviewStep({
   const recognizedTotal = parseGermanAmount(totalAmount.value)
   const hasDiscrepancy = recognizedTotal !== null && roundToCents(itemsSum - recognizedTotal) !== 0
 
+  // Nachzahlung/Guthaben previews the value that will actually be saved as
+  // the Bill's totalAmount (the confirmed/edited total when present, the
+  // item sum otherwise) - never a number that differs from what "Abrechnung
+  // speichern" persists.
   const advancePaymentsValue = parseGermanAmount(advancePayments.value) ?? 0
-  const { balance, balanceType } = calculateBillBalance(itemsSum, advancePaymentsValue)
+  const { balance, balanceType } = calculateBillBalance(recognizedTotal ?? itemsSum, advancePaymentsValue)
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
