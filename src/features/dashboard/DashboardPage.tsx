@@ -6,6 +6,7 @@ import { DashboardSkeleton } from './components/DashboardSkeleton'
 import { LatestBillCard } from './components/LatestBillCard'
 import { MonthlyCostCard } from './components/MonthlyCostCard'
 import { QuickActions } from './components/QuickActions'
+import { StatisticsSummaryCard } from './components/StatisticsSummaryCard'
 import { UpcomingContractsCard } from './components/UpcomingContractsCard'
 import { YearlyCostCard } from './components/YearlyCostCard'
 import { useDashboardData } from './hooks/useDashboardData'
@@ -36,6 +37,8 @@ export function DashboardPage() {
               referenceDate={now}
             />
           </div>
+
+          <StatisticsSummaryCard />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <CostTrendChart monthlyCosts={data.monthlyCosts} />

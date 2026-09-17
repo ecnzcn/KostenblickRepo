@@ -96,6 +96,10 @@ OCR-Abschnitt unten). Der Import-Workflow selbst liegt bewusst unter
 `Bill`), das Dokumente nur als Nebenprodukt mitführt; `features/documents/`
 bleibt für eine spätere, bill-unabhängige Dokumentenverwaltung reserviert.
 
+Seit Phase 5 ist `domain/usecases/statistics/` befüllt (siehe
+„Statistik"-Abschnitt unten für die Architektur- und Datenquellen-
+Entscheidungen).
+
 ## Domain Models
 
 Mindestens folgende Entities:
@@ -294,7 +298,7 @@ optionale `documentId`/`confidence`/`sourceText`/`manuallyVerified` erweitert
 `createBillWithItems` für beide Wege (manuell und Import) dieselbe,
 einmal getestete Persistenz-Logik nutzt.
 
-### Statistik
+### Statistik (Phase 5, `src/domain/usecases/statistics/`)
 
 Kosten müssen nach Monat, Jahr und Kategorie auswertbar sein.
 
@@ -303,7 +307,76 @@ prozentuale Veränderung = ((newValue - oldValue) / oldValue) * 100
 ```
 
 Bei `oldValue === 0` muss eine sichere Sonderbehandlung erfolgen (keine
-Division durch 0).
+Division durch 0). Zentral implementiert in `calculateYearOverYearChange`
+(nutzt intern das bereits vorhandene `calculatePercentageChange`):
+`percent` ist `undefined`, wenn es kein Vorjahr gibt (kein Vergleich
+möglich), und `null`, wenn das Vorjahr existiert, aber 0 € beträgt (keine
+gültige Vergleichsbasis). Die UI zeigt in beiden Fällen nie eine
+Prozentzahl, sondern „Noch kein Vorjahresvergleich" bzw. „Keine
+Vergleichsbasis" / „—" (`formatPercentChangeOrDash` in
+`src/utils/formatters.ts`).
+
+**Datenquelle**: Die Statistik liest bewusst **direkt aus `billRepository`/
+`billItemRepository`**, nicht aus der bestehenden, `CostEntry`-basierten
+Dashboard-Pipeline (`getDashboardData`). `createBillWithItems` erzeugt
+keine `CostEntry`-Einträge, importierte/erfasste Abrechnungen fließen also
+nicht in die alten Dashboard-Summen ein – die beiden Pipelines sind aktuell
+bewusst getrennte, parallele Datenquellen. Für Phase 5 ergeben die unten
+beschriebenen Bill-vs-BillItems-Regeln nur auf Basis der Bills selbst Sinn,
+daher diese explizite Entscheidung.
+
+**Keine doppelte Zählung (No double counting)**: `Bill.totalAmount` ist die
+alleinige Quelle für „was hat dieses Jahr gekostet"
+(`StatisticsSummary.totalAmount`, Summe von `Bill.totalAmount` pro Jahr).
+Die Summe der `BillItem`-Beträge (`itemizedAmount`) wird **niemals** zu
+`totalAmount` addiert – sie dient ausschließlich der Kategorien-/
+Positions-Aufschlüsselung. Eine Differenz zwischen beiden
+(`unassignedDifference = totalAmount - itemizedAmount`) wird transparent
+angezeigt statt still korrigiert (z. B. „Gesamtkosten: 1.940 €,
+Kostenpositionen: 1.850 €, nicht zugeordnete Differenz: 90 €" in
+`BillDiscrepancyNotice`). BillItems ohne `categoryId` verschwinden nicht,
+sondern laufen unter „Nicht zugeordnet".
+
+**Monatsdaten**: Ein Bill wird einem Kalendermonat nur zugeordnet, wenn
+`periodStart` und `periodEnd` vollständig innerhalb desselben Monats liegen
+(`calculateMonthlyStatistics`). Eine typische Jahresabrechnung
+(`periodStart` = 1. Jan, `periodEnd` = 31. Dez) wird bewusst **keinem**
+Monat zugeordnet – eine gleichmäßige Verteilung über 12 Monate würde eine
+Genauigkeit vortäuschen, die die Daten nicht hergeben. Fehlen zuordenbare
+Monate, zeigt die UI stattdessen „Für dieses Jahr liegen noch nicht
+genügend monatlich zuordenbare Daten vor." Der Monatsdurchschnitt
+(`calculateAverageMonthlyCost`) wird ausschließlich über Monate mit echten
+Daten gebildet, nie als `Jahresgesamt / 12`.
+
+**Kosten pro m²**: In Phase 5 **nicht implementiert**. `Property` hat kein
+Flächenfeld und wird aktuell nirgends in der UI verwaltet; ein verstecktes
+Pflichtfeld oder eine geschätzte Fläche wäre laut Datenqualitätsregeln
+verboten. Die Fallback-Option „Feature zunächst nicht anzeigen" wird
+genutzt.
+
+**Architektur**: `UI (StatisticsPage + Charts) → useStatisticsData-Hook →
+calculateStatistics.ts (+ calculateYearComparison/-CategoryStatistics/
+-TopCostPositions/-MonthlyStatistics) → billRepository/billItemRepository/
+categoryRepository → IndexedDB`. `getStatisticsData()` lädt Bills/BillItems/
+Categories genau einmal und leitet daraus alle Ansichten (Summary,
+Kategorien, Top-Positionen, Monats- und Mehrjahresvergleich) ab – keine
+mehrfachen IndexedDB-Zugriffe pro Seitenaufruf. Charts sind wie im
+Dashboard handgerollte SVG/CSS-Komponenten (keine neue Chart-Library
+nötig); Balkendiagramme tragen zusätzlich eine `sr-only`-Textliste als
+barrierefreie Alternativdarstellung.
+
+**Dashboard-Integration**: Die kompakte Statistik-Karte auf dem Dashboard
+(`StatisticsSummaryCard`) ruft direkt `getStatisticsData()` auf – keine
+eigene/duplizierte Berechnungslogik im Dashboard-Feature.
+
+**Teststrategie**: Reine Kalkulationsfunktionen sind co-located getestet
+(z. B. `calculateCategoryStatistics.ts` über `src/test/
+statistics.usecase.test.ts`, analog zum bestehenden `dashboard.test.ts`-
+Muster); dieselbe Datei enthält auch den IndexedDB-Integrationstest
+(Fixtures → `getStatisticsData` → Ergebnis). `StatisticsPage.test.tsx`
+mockt die Use-Case-Schicht für UI-Zustände (Loading/Error/Empty/Daten,
+Jahreswechsel); `statisticsPage.integration.test.tsx` prüft den vollen Weg
+IndexedDB-Fixtures → Use Case → gerenderte Seite ohne Mocks.
 
 ### Sync
 
