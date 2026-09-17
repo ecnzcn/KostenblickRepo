@@ -22,6 +22,7 @@ export function BillListItem({ bill, onOpen, onEdit, onDelete }: BillListItemPro
             {bill.balanceType === 'payment_due' ? 'Nachzahlung' : 'Guthaben'}: {formatCurrency(bill.balance)}
           </p>
         )}
+        {bill.documentId ? <p className="mt-1 text-xs text-neutral-500">📄 Dokument vorhanden</p> : null}
       </button>
       <div className="mt-3">
         <ItemActions itemLabel={`Abrechnung ${bill.year}`} onEdit={onEdit} onDelete={onDelete} />

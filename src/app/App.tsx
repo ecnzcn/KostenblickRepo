@@ -5,6 +5,7 @@ import { ROUTES } from '../constants/navigation'
 import { BillDetailPage } from '../features/bills/BillDetailPage'
 import { BillFormPage } from '../features/bills/BillFormPage'
 import { BillsPage } from '../features/bills/BillsPage'
+import { ImportBillPage } from '../features/bills/import/ImportBillPage'
 import { ContractDetailPage } from '../features/contracts/ContractDetailPage'
 import { ContractFormPage } from '../features/contracts/ContractFormPage'
 import { ContractsPage } from '../features/contracts/ContractsPage'
@@ -25,6 +26,7 @@ export function App() {
 
           <Route path={ROUTES.bills} element={<BillsPage />} />
           <Route path={ROUTES.billsNew} element={<BillFormPage mode="create" />} />
+          <Route path={ROUTES.billsImport} element={<ImportBillPage />} />
           <Route path={ROUTES.billEditPattern} element={<BillFormPage mode="edit" />} />
           <Route path={ROUTES.billDetailPattern} element={<BillDetailPage />} />
 

@@ -4,10 +4,12 @@ import { ErrorState } from '../../components/ErrorState'
 import { ItemActions } from '../../components/ItemActions'
 import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { DocumentViewer } from '../../components/documents/DocumentViewer'
 import { useToast } from '../../components/feedback/useToast'
 import { billEditPath, ROUTES } from '../../constants/navigation'
-import type { Bill, BillItem, Category } from '../../domain/models/entities'
-import { BILL_TYPE_LABELS, deleteBillWithItems, getBill, listBillItems } from '../../domain/usecases/bills'
+import type { Bill, BillItem, Category, Document } from '../../domain/models/entities'
+import { BILL_TYPE_LABELS, deleteBillWithItems, getBill, listBillItems, removeBillDocument } from '../../domain/usecases/bills'
+import { getDocument, getDocumentBlob } from '../../domain/usecases/documents'
 import { categoryRepository } from '../../domain/repositories/categories'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
@@ -22,6 +24,11 @@ export function BillDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
+  const [billDocument, setBillDocument] = useState<Document>()
+  const [documentBlob, setDocumentBlob] = useState<Blob>()
+  const [documentVisible, setDocumentVisible] = useState(false)
+  const [documentBusy, setDocumentBusy] = useState(false)
+
   useEffect(() => {
     if (!id) return
     let cancelled = false
@@ -35,6 +42,11 @@ export function BillDetailPage() {
         setBill(foundBill)
         setItems(billItems)
         setCategories(categoryList)
+        if (foundBill.documentId) {
+          getDocument(foundBill.documentId).then((doc) => {
+            if (!cancelled) setBillDocument(doc)
+          })
+        }
       })
       .catch(() => {
         if (!cancelled) setError(true)
@@ -46,6 +58,45 @@ export function BillDetailPage() {
       cancelled = true
     }
   }, [id])
+
+  async function handleToggleDocument() {
+    if (documentVisible) {
+      setDocumentVisible(false)
+      return
+    }
+    if (!billDocument) return
+    if (!documentBlob) {
+      try {
+        const blob = await getDocumentBlob(billDocument)
+        if (!blob) {
+          showToast('Das Dokument konnte nicht geladen werden.', 'error')
+          return
+        }
+        setDocumentBlob(blob)
+      } catch {
+        showToast('Das Dokument konnte nicht geladen werden.', 'error')
+        return
+      }
+    }
+    setDocumentVisible(true)
+  }
+
+  async function handleDeleteDocument() {
+    if (!bill || !window.confirm('Das Originaldokument wirklich löschen? Die Abrechnung bleibt erhalten.')) return
+    setDocumentBusy(true)
+    try {
+      const updatedBill = await removeBillDocument(bill)
+      setBill(updatedBill)
+      setBillDocument(undefined)
+      setDocumentBlob(undefined)
+      setDocumentVisible(false)
+      showToast('Dokument gelöscht')
+    } catch {
+      showToast('Dokument konnte nicht gelöscht werden. Bitte versuche es erneut.', 'error')
+    } finally {
+      setDocumentBusy(false)
+    }
+  }
 
   async function handleDelete() {
     if (!id || !window.confirm('Diese Abrechnung wirklich löschen?')) return
@@ -110,6 +161,35 @@ export function BillDetailPage() {
                 )
               })}
             </ul>
+          </div>
+        ) : null}
+
+        {bill.documentId && billDocument ? (
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <p className="mb-1 text-sm font-semibold text-neutral-900">Originaldokument</p>
+            <p className="mb-3 text-sm text-neutral-600">{billDocument.filename}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleToggleDocument}
+                className="min-h-11 rounded-xl border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-700"
+              >
+                {documentVisible ? 'Dokument schließen' : 'Dokument öffnen'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteDocument}
+                disabled={documentBusy}
+                className="min-h-11 rounded-xl border border-red-200 bg-white px-4 text-sm font-medium text-red-600 disabled:opacity-60"
+              >
+                Dokument löschen
+              </button>
+            </div>
+            {documentVisible && documentBlob ? (
+              <div className="mt-3">
+                <DocumentViewer blob={documentBlob} mimeType={billDocument.mimeType} filename={billDocument.filename} />
+              </div>
+            ) : null}
           </div>
         ) : null}
 

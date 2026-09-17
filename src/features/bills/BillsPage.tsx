@@ -33,13 +33,21 @@ export function BillsPage() {
         <ErrorState message="Die Abrechnungen konnten nicht geladen werden." onRetry={refetch} />
       ) : bills.length === 0 ? (
         <>
-          <EmptyState message="Noch keine Abrechnungen vorhanden." />
-          <Link
-            to={ROUTES.billsNew}
-            className="mt-4 inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-sm font-medium text-white"
-          >
-            + Abrechnung hinzufügen
-          </Link>
+          <EmptyState message="Noch keine Abrechnung vorhanden." />
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              to={ROUTES.billsNew}
+              className="inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-sm font-medium text-white"
+            >
+              Abrechnung erfassen
+            </Link>
+            <Link
+              to={ROUTES.billsImport}
+              className="inline-flex min-h-11 items-center rounded-full border border-neutral-300 bg-white px-5 text-sm font-medium text-neutral-700"
+            >
+              Abrechnung importieren
+            </Link>
+          </div>
         </>
       ) : (
         <>
@@ -54,12 +62,20 @@ export function BillsPage() {
               />
             ))}
           </ul>
-          <Link
-            to={ROUTES.billsNew}
-            className="mt-4 inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-sm font-medium text-white"
-          >
-            + Abrechnung hinzufügen
-          </Link>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              to={ROUTES.billsNew}
+              className="inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-sm font-medium text-white"
+            >
+              + Abrechnung hinzufügen
+            </Link>
+            <Link
+              to={ROUTES.billsImport}
+              className="inline-flex min-h-11 items-center rounded-full border border-neutral-300 bg-white px-5 text-sm font-medium text-neutral-700"
+            >
+              + Abrechnung importieren
+            </Link>
+          </div>
         </>
       )}
     </>

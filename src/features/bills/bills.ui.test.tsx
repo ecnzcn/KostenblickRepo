@@ -33,8 +33,9 @@ describe('BillsPage', () => {
   it('shows the empty state with a call to action when there is no data', async () => {
     renderBillsApp()
     await waitForLoadingToFinish()
-    expect(screen.getByText('Noch keine Abrechnungen vorhanden.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '+ Abrechnung hinzufügen' })).toBeInTheDocument()
+    expect(screen.getByText('Noch keine Abrechnung vorhanden.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Abrechnung erfassen' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Abrechnung importieren' })).toBeInTheDocument()
   })
 
   it('lists a created bill with its computed balance', async () => {
