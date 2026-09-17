@@ -194,4 +194,13 @@ describe('DashboardPage', () => {
 
     expect(screen.getByText(/Noch keine Müllkosten für \d+ erfasst\./)).toBeInTheDocument()
   })
+
+  it('links to the central cost overview and clarifies the waste card is already part of the totals above', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByRole('link', { name: 'Kostenübersicht →' })).toHaveAttribute('href', '#/kostenuebersicht')
+    expect(screen.getByText('Bereits in den Jahreskosten oben enthalten.')).toBeInTheDocument()
+  })
 })

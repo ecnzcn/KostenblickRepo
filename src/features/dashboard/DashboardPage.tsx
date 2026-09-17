@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+import { ROUTES } from '../../constants/navigation'
 import { CategoryCostChart } from './components/CategoryCostChart'
 import { CostTrendChart } from './components/CostTrendChart'
 import { DashboardError } from './components/DashboardError'
@@ -26,6 +28,13 @@ export function DashboardPage() {
         <DashboardError onRetry={refetch} />
       ) : (
         <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-neutral-900">Kosten</h2>
+            <Link to={ROUTES.costOverview} className="text-sm font-medium text-accent">
+              Kostenübersicht →
+            </Link>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <MonthlyCostCard
               amount={data.currentMonthCost}

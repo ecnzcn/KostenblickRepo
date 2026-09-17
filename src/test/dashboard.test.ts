@@ -209,9 +209,15 @@ describe('getDashboardData (integration against IndexedDB)', () => {
 
     const data = await getDashboardData(new Date('2026-09-16T00:00:00.000Z'))
     expect(data.currentMonthCost).toBe(200)
+    // 2026 has no Bill/WasteCost, only the ce-a CostEntry -> 200, same as before.
     expect(data.currentYearCost).toBe(200)
-    expect(data.previousYearCost).toBe(100)
-    expect(data.currentYearChangePercent).toBe(100)
+    // Phase 9: previousYearCost (2025) now combines Bill.totalAmount (the
+    // default bill() fixture below, year 2025, 2486.4) with the manual
+    // ce-b CostEntry (100) via the central cost projection - no longer
+    // CostEntry-only, since the Dashboard's headline cards now read from
+    // the same pipeline as /kostenuebersicht (see dashboard.ts).
+    expect(data.previousYearCost).toBe(2586.4)
+    expect(data.currentYearChangePercent).toBeCloseTo(((200 - 2586.4) / 2586.4) * 100, 5)
     expect(data.upcomingContracts).toHaveLength(1)
     expect(data.latestBill?.billId).toBe('b-1')
     expect(data.documentsSummary).toEqual({ total: 1, needsReview: 1 })

@@ -22,6 +22,7 @@ export function WasteCostsSummaryCard({ summary }: WasteCostsSummaryCardProps) {
               {formatPercentChange(summary.changePercent)} gegenüber {summary.year - 1}
             </p>
           ) : null}
+          <p className="mt-1 text-xs text-neutral-400">Bereits in den Jahreskosten oben enthalten.</p>
         </div>
       )}
       <Link to={ROUTES.waste} className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-accent">

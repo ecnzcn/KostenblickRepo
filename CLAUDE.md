@@ -69,6 +69,7 @@ src/
 │   ├── contracts/
 │   ├── waste/
 │   ├── documents/
+│   ├── costOverview/
 │   └── settings/
 ├── domain/
 │   ├── models/       Entities und Value Objects
@@ -115,6 +116,11 @@ Seit Phase 8 ist `features/waste/` befüllt (siehe
 IndexedDB-Store bestanden bereits seit Phase 2 und wurden unverändert
 weiterverwendet (bis auf eine additive Erweiterung von `WasteCategory` um
 `bulky`/„Sperrmüll" – kein Feld, keine Migration).
+
+Seit Phase 9 ist `domain/usecases/centralCosts.ts` sowie
+`features/costOverview/` neu hinzugekommen (siehe „Zentrale
+Kostenübersicht"-Abschnitt unten) – ein reines Read-Model-Modul ohne neue
+Entity und ohne neuen IndexedDB-Store; `DATABASE_VERSION` bleibt bei 2.
 
 ## Domain Models
 
@@ -652,6 +658,126 @@ read/update/delete, Dokument wechseln/entfernen, Referenzprüfung beim
 Löschen), `waste.ui.test.tsx` (Liste, Jahresfilter, Empty States, Erfassen,
 Bearbeiten, Löschen, Dokument hochladen/auswählen/öffnen), plus
 Erweiterungen in `DashboardPage.test.tsx`/`SettingsPage.test.tsx`.
+
+### Zentrale Kostenübersicht (Phase 9, `domain/usecases/centralCosts.ts`,
+`features/costOverview/`)
+
+Bis Phase 8 verwendeten Dashboard (`CostEntry`-Pipeline) und Statistik
+(`Bill`/`BillItem`-Pipeline) unterschiedliche Datenquellen für „Kosten
+dieses Jahres" – für dasselbe Jahr konnten dadurch zwei unterschiedliche
+Zahlen angezeigt werden, ohne dass für Nutzer erkennbar war, ob sich z. B.
+Müllkosten bereits in einer Jahressumme befinden. Phase 9 schafft dafür
+eine **zentrale Kostenprojektion** – ausdrücklich ein **Read Model**, das
+zur Laufzeit aus bereits bestehenden Entities berechnet wird, **keine**
+neue persistierte Entity, **kein** neuer IndexedDB-Store, **keine**
+Datenbankmigration (`DATABASE_VERSION` bleibt bei 2). `Bill`, `WasteCost`
+und `CostEntry` bleiben jeweils ihre eigene Source of Truth; nichts wird
+dupliziert gespeichert.
+
+**Source-of-Truth-Regeln** (verbindlich, siehe `centralCosts.ts`):
+`Bill.totalAmount` für Abrechnungen (niemals zusätzlich mit der
+BillItem-Summe addiert – dieselbe Regel wie in der Statistik, siehe oben),
+`WasteCost.amount` für Müllkosten, `CostEntry.amount` für manuell erfasste
+Kosten. `Contract.monthlyCost`/`yearlyCost` fließen **bewusst nicht** ein –
+das sind vertragliche/laufende Konditionen, keine tatsächlich angefallenen
+Kosten; `centralCosts.ts` importiert `contractRepository` an keiner Stelle.
+Eine zukünftige, separate „Laufende Verpflichtungen"-Ansicht für
+Vertragskosten ist ein eigenes, hier nicht umgesetztes Arbeitspaket.
+
+**Kernbausteine**: `buildCentralCostItems(bills, wasteCosts, costEntries)`
+bildet aus jeder `Bill` (bei `Bill.totalAmount`, nie ihren `BillItem`s),
+jedem `WasteCost` und jedem `CostEntry` **ohne** bereits gesetzte `billId`
+genau ein `CentralCostItem`. `getCentralCostsByYear`/`-ByMonth`/
+`-ByCategory`/`getCentralCostSummary` leiten daraus Jahres-, Monats- und
+Kategorieansichten ab; `getCentralCostData(year)` lädt Bills/BillItems/
+WasteCosts/CostEntries/Categories genau einmal (analog `getStatisticsData`)
+und ruft die reinen Funktionen darauf auf – keine mehrfachen
+IndexedDB-Zugriffe pro Karte/Diagramm.
+
+**CostEntry-Deduplizierung**: Ein `CostEntry` mit bereits gesetzter
+`billId` gilt als durch diese `Bill` bereits abgedeckt und wird von der
+zentralen Projektion **ausgeschlossen** statt zusätzlich gezählt. Ohne
+gesetzte `billId` erfolgt **keine** heuristische Zuordnung anhand von
+Betrag/Datum/Beschreibung – dafür existiert aktuell ohnehin kein
+schreibender Code-Pfad, der `billId` automatisch setzt (`createCostEntry`
+lässt es weiterhin unangetastet).
+
+**Doppelzählung wird erkannt, nie automatisch aufgelöst**:
+`detectCostAggregationWarnings()` prüft, ob für ein Jahr gleichzeitig ein
+`WasteCost`-Eintrag **und** entweder ein `BillItem` mit
+`categoryId === 'waste'` oder ein nicht-Bill-verknüpfter `CostEntry` mit
+`categoryId === 'waste'` existieren, und erzeugt dann eine
+`CostAggregationWarning` (`possible_duplicate_waste` bzw.
+`possible_duplicate_manual_entry`). Es wird dabei **nichts** gelöscht,
+verrechnet oder aus der Summe entfernt – die Kostenübersicht zeigt die
+Warnung transparent an und überlässt die Prüfung dem Nutzer.
+
+**Kategorien**: `WasteCost` wird in der zentralen Projektion der
+bestehenden, bereits geseedeten zentralen `Category` mit der ID `'waste'`
+zugeordnet (`CENTRAL_WASTE_CATEGORY_ID`) – keine neue, synthetische
+Kategorie. Die ursprüngliche, granularere `WasteCategory`
+(residual/organic/…) geht dabei nicht verloren, sondern bleibt zusätzlich
+als `wasteCategory` auf dem einzelnen `CentralCostItem` erhalten. Das
+zweite Kategoriesystem (`WasteCategory`) wird dadurch **nicht** abgeschafft
+oder umgebaut.
+
+**Zeitliche Zuordnung**: Eine `Bill` wird – wie in der Statistik – nur
+einem Kalendermonat zugeordnet, wenn ihr Zeitraum vollständig in einem
+Monat liegt (`getCentralCostsByMonth` nutzt dafür direkt die bestehende
+`calculateMonthlyStatistics`-Logik wieder). Ein `CostEntry` wird über sein
+eigenes Datum zugeordnet. Ein `WasteCost` hat **keine** Monatsgranularität
+und wird **nie** künstlich auf Monate verteilt – er fließt ausschließlich
+in `CentralCostSummary.unallocatedForMonthView` ein
+(`= totalAmount - monthlyAttributedTotal`), das die Kostenübersicht auf
+`/kostenuebersicht` transparent unterhalb des Monatsdiagramms ausweist,
+statt eine Genauigkeit vorzutäuschen, die die Daten nicht hergeben.
+
+**Neue Seite** (`/kostenuebersicht`, `src/features/costOverview/`):
+Jahresauswahl, Gesamtkosten mit Aufteilung Abrechnungen/Müll/Manuell
+(`CostOverviewSummaryCard`), Warnungen (`CostOverviewWarnings`,
+rendert nichts, wenn `warnings` leer ist), Monatsdiagramm mit
+Unallocated-Hinweis (`CostOverviewMonthlyChart`) und Kategorieaufschlüsselung
+(`CostOverviewCategoryChart`). Erreichbar über „Mehr" (Settings) und einen
+„Kostenübersicht →"-Link direkt über den Kosten-Karten auf dem Dashboard –
+bewusst **nicht** in der fünfteiligen Bottom-Nav/Sidebar (Home, Statistik,
+Abrechnungen, Verträge, Mehr bleibt unverändert).
+
+**Dashboard-Integration**: `getDashboardData()`
+(`domain/usecases/dashboard.ts`) berechnet `currentMonthCost`/
+`previousMonthCost`/`currentYearCost`/`previousYearCost`/`monthlyCosts`/
+`categoryCosts` jetzt über dieselbe zentrale Projektion (Bill + WasteCost +
+CostEntry) statt ausschließlich über `CostEntry` – das behebt die
+eingangs beschriebene Diskrepanz. Die bereits vorhandenen, weiterhin
+exportierten und eigenständig getesteten reinen Funktionen
+`getMonthlyCosts`/`getYearlyCosts`/`getCostsByCategory` (CostEntry-only)
+bleiben unverändert bestehen, werden von `getDashboardData()` selbst aber
+nicht mehr aufgerufen. Die bestehende `WasteCostsSummaryCard` bleibt
+erhalten (kein Rückbau einer funktionierenden, getesteten Karte), bekommt
+aber den Hinweis „Bereits in den Jahreskosten oben enthalten.", damit nie
+der Eindruck entsteht, die dort gezeigte Müllkosten-Zahl käme zur
+Jahreskosten-Kachel addiert obendrauf.
+
+**Statistik-Integration**: bewusst **nicht** vorgenommen. `/statistik`
+liest weiterhin ausschließlich aus `billRepository`/`billItemRepository`
+(siehe „Statistik"-Abschnitt oben) – diese Pipeline demonstriert exakt die
+gleichen Bill-only-Garantien, die die zentrale Projektion für Bills
+übernimmt, und ein Umbau hätte ein unnötiges Regressionsrisiko für eine
+bereits fein austarierte, eigenständig getestete Fläche bedeutet, ohne vom
+Auftrag zwingend gefordert zu sein („nur wenn dadurch die bestehenden
+fachlichen Regeln exakt erhalten bleiben"). Eine spätere, bewusste
+Zusammenführung ist ein eigenes, zukünftiges Arbeitspaket.
+
+**Teststrategie**: `centralCosts.usecase.test.ts` (Source-of-Truth pro
+Quelle, Ausschluss von BillItems aus der Summe, Bill-verknüpfte
+CostEntry-Deduplizierung, Monats-/Jahreslogik inkl. Nicht-Verteilung von
+Jahresabrechnungen und WasteCost, Kategorie-Mapping, Warnungserkennung
+inkl. „erzeugt keine Warnung, wenn kein WasteCost existiert"-Gegenprobe,
+IndexedDB-Integrationstest), `CostOverviewPage.test.tsx` (gemockte
+Use-Case-Schicht für UI-Zustände), `costOverviewPage.integration.test.tsx`
+(IndexedDB-Fixtures → Use Case → gerenderte Seite, inkl. der
+Doppelzählungs-Warnung), Erweiterungen in `dashboard.test.ts`/
+`DashboardPage.test.tsx`/`SettingsPage.test.tsx` für die neue Quelle bzw.
+den neuen Link.
 
 ### Sync
 
