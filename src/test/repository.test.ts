@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { deleteDatabase } from '../database/database'
+import { deleteDatabase, getDatabase } from '../database/database'
 import { contractRepository } from '../domain/repositories/indexedDbRepositories'
 import { categoryRepository } from '../domain/repositories/categories'
 import { DEFAULT_CATEGORIES } from '../constants/categories'
@@ -75,6 +75,40 @@ describe('IndexedDBRepository (syncable entity CRUD)', () => {
 
   it('is a no-op when deleting an id that does not exist', async () => {
     await expect(contractRepository.delete('missing')).resolves.toBeUndefined()
+  })
+})
+
+describe('SyncQueue population (disabled - no consumer exists yet)', () => {
+  it('does not create a syncQueue entry on save', async () => {
+    await contractRepository.save(baseContract())
+    const db = await getDatabase()
+    expect(await db.getAll('syncQueue')).toHaveLength(0)
+  })
+
+  it('does not create a syncQueue entry on delete', async () => {
+    await contractRepository.save(baseContract())
+    await contractRepository.delete('contract-1')
+    const db = await getDatabase()
+    expect(await db.getAll('syncQueue')).toHaveLength(0)
+  })
+
+  it('still maintains updatedAt, syncVersion and deletedAt while the queue stays empty', async () => {
+    const created = await contractRepository.save(baseContract())
+    expect(created.updatedAt).not.toBe('')
+    expect(created.syncVersion).toBe(1)
+    expect(created.deletedAt).toBeNull()
+
+    const updated = await contractRepository.save({ ...created, monthlyCost: 45 })
+    expect(updated.syncVersion).toBe(2)
+    expect(updated.updatedAt).not.toBe('')
+
+    await contractRepository.delete('contract-1')
+    const deleted = await contractRepository.getAllIncludingDeleted()
+    expect(deleted[0]?.deletedAt).not.toBeNull()
+    expect(deleted[0]?.syncVersion).toBe(3)
+
+    const db = await getDatabase()
+    expect(await db.getAll('syncQueue')).toHaveLength(0)
   })
 })
 

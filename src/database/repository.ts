@@ -1,9 +1,8 @@
 import type { IDBPDatabase, StoreNames } from 'idb'
 import type { KostenblickDB } from '../database/schema'
-import type { EntityType, SyncableEntity, PersistedEntity } from '../domain/models/entities'
+import type { SyncableEntity, PersistedEntity } from '../domain/models/entities'
 import type { Repository, SyncableRepository } from '../domain/repositories/interfaces'
 import { getDatabase } from '../database/database'
-import { enqueueSyncChange } from '../domain/repositories/syncQueue'
 
 export function withTimestamps<T extends PersistedEntity>(entity: T, now = new Date().toISOString()): T {
   return { ...entity, createdAt: entity.createdAt || now, updatedAt: now }
@@ -22,16 +21,10 @@ export function withSyncMetadata<T extends SyncableEntity>(entity: T, now = new 
 export class IndexedDBRepository<T extends SyncableEntity, K extends StoreNames<KostenblickDB>>
   implements SyncableRepository<T> {
   private readonly storeName: K
-  private readonly entityType: EntityType
   private readonly dbProvider: () => Promise<IDBPDatabase<KostenblickDB>>
 
-  constructor(
-    storeName: K,
-    entityType: EntityType,
-    dbProvider: () => Promise<IDBPDatabase<KostenblickDB>> = getDatabase,
-  ) {
+  constructor(storeName: K, dbProvider: () => Promise<IDBPDatabase<KostenblickDB>> = getDatabase) {
     this.storeName = storeName
-    this.entityType = entityType
     this.dbProvider = dbProvider
   }
 
@@ -57,7 +50,6 @@ export class IndexedDBRepository<T extends SyncableEntity, K extends StoreNames<
     const next = withSyncMetadata(entity)
     next.syncVersion = existing ? existing.syncVersion + 1 : Math.max(1, entity.syncVersion || 1)
     await db.put(this.storeName, next as never)
-    await enqueueSyncChange(this.entityType, next.id, 'upsert')
     return next
   }
 
@@ -68,7 +60,6 @@ export class IndexedDBRepository<T extends SyncableEntity, K extends StoreNames<
     const deleted = withSyncMetadata({ ...existing, deletedAt: new Date().toISOString() })
     deleted.syncVersion += 1
     await db.put(this.storeName, deleted as never)
-    await enqueueSyncChange(this.entityType, id, 'delete')
   }
 }
 
