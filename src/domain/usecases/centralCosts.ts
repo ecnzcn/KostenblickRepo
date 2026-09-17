@@ -306,6 +306,12 @@ export function getCentralCostsByCategory(
  * and waste-categorized costs recorded elsewhere for the same year - see
  * CLAUDE.md, "Doppelzählung". Nothing is deleted, merged or excluded from
  * any total because of a warning; the user is left to review and decide.
+ *
+ * The warning text deliberately never states a specific "duplicated"
+ * amount: the data gives no reliable way to know whether the separate
+ * WasteCost really is the same money as the waste-categorized BillItem/
+ * CostEntry (as opposed to two genuinely independent waste costs in the
+ * same year) - inventing a number here would be false precision.
  */
 export function detectCostAggregationWarnings(
   bills: Bill[],
@@ -326,7 +332,7 @@ export function detectCostAggregationWarnings(
     warnings.push({
       type: 'possible_duplicate_waste',
       year,
-      description: `Für ${year} wurden Müllkosten sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie diese Positionen.`,
+      description: `Mögliche Doppelzählung: Müllkosten wurden für ${year} sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.`,
     })
   }
 
@@ -337,7 +343,7 @@ export function detectCostAggregationWarnings(
     warnings.push({
       type: 'possible_duplicate_manual_entry',
       year,
-      description: `Für ${year} wurden Müllkosten sowohl manuell erfasst als auch separat unter Müllkosten erfasst. Bitte prüfen Sie diese Positionen.`,
+      description: `Mögliche Doppelzählung: Müllkosten wurden für ${year} sowohl manuell erfasst als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.`,
     })
   }
 

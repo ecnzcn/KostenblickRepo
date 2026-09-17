@@ -12,6 +12,8 @@ import type { BalanceType, Bill, Category, Contract, CostEntry, Document } from 
 import { BILL_TYPE_LABELS } from './bills'
 import {
   buildCentralCostItems,
+  type CostAggregationWarning,
+  detectCostAggregationWarnings,
   getCentralCostsByCategory,
   getCentralCostsByMonth,
   getCentralCostsByYear,
@@ -73,6 +75,12 @@ export interface DashboardData {
   latestBill?: BillSummary
   documentsSummary: DocumentsSummary
   wasteCostsSummary: WasteCostYearSummary
+  /** Possible overlaps between WasteCost and waste-categorized Bill/
+   * CostEntry amounts for the current year (see centralCosts.ts,
+   * detectCostAggregationWarnings) - reused as-is, not reimplemented, so
+   * the Dashboard's headline numbers and /kostenuebersicht never disagree
+   * on whether a possible duplicate exists. Empty when nothing is flagged. */
+  currentYearWarnings: CostAggregationWarning[]
 }
 
 function monthKey(year: number, month: number): string {
@@ -239,7 +247,8 @@ export async function getDashboardData(referenceDate: Date = new Date()): Promis
     monthKey(previousMonthDate.getUTCFullYear(), previousMonthDate.getUTCMonth()),
   )
 
-  const currentYearCost = getCentralCostSummary(items, currentYearMonthly, [], currentYear).totalAmount
+  const currentYearWarnings = detectCostAggregationWarnings(bills, billItems, wasteCosts, costEntries, currentYear)
+  const currentYearCost = getCentralCostSummary(items, currentYearMonthly, currentYearWarnings, currentYear).totalAmount
   const hasPreviousYearData = getCentralCostsByYear(items, previousYear).length > 0
   const previousYearCost = hasPreviousYearData
     ? getCentralCostSummary(items, previousYearMonthly, [], previousYear).totalAmount
@@ -269,6 +278,7 @@ export async function getDashboardData(referenceDate: Date = new Date()): Promis
       previousYearCost !== undefined ? calculatePercentageChange(previousYearCost, currentYearCost) : null,
     monthlyCosts: currentYearMonthly.map((entry) => ({ month: entry.month, amount: entry.amount })),
     categoryCosts,
+    currentYearWarnings,
     upcomingContracts: getUpcomingContractDeadlines(contracts, categories, referenceDate),
     latestBill: getLatestBill(bills),
     documentsSummary: getDocumentsSummary(documents),

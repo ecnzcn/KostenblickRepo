@@ -18,6 +18,7 @@ export function CostOverviewSummaryCard({ summary }: CostOverviewSummaryCardProp
       <p className="mt-1 text-3xl font-semibold tracking-tight text-neutral-900">
         {formatCurrency(summary.totalAmount)}
       </p>
+      <p className="mt-1 text-xs text-neutral-400">Abrechnungen + Müll + manuelle Kosten</p>
 
       <ul className="mt-4 flex flex-col divide-y divide-neutral-100 border-t border-neutral-100">
         {SOURCE_ROWS.map((row) => (

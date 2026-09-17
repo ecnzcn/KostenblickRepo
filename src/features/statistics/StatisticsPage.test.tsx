@@ -101,6 +101,15 @@ describe('StatisticsPage', () => {
     expect(screen.getByText(/nicht zugeordnete Differenz/)).toBeInTheDocument()
   })
 
+  it('labels the yearly total "Abrechnungskosten", distinct from the central cost overview\'s "Gesamtkosten"', async () => {
+    getStatisticsDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Abrechnungskosten 2026')).toBeInTheDocument()
+    expect(screen.queryByText('Gesamtkosten 2026')).not.toBeInTheDocument()
+  })
+
   it('shows "Keine Vergleichsbasis" styling (a dash) when the previous year was 0', async () => {
     getStatisticsDataMock.mockResolvedValue({
       ...populatedData,

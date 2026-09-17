@@ -3,10 +3,11 @@ import { deleteDatabase } from '../database/database'
 import {
   billItemRepository,
   billRepository,
+  contractRepository,
   costEntryRepository,
   wasteCostRepository,
 } from '../domain/repositories/indexedDbRepositories'
-import type { Bill, BillItem, Category, CostEntry, WasteCost } from '../domain/models/entities'
+import type { Bill, BillItem, Category, Contract, CostEntry, WasteCost } from '../domain/models/entities'
 import {
   buildCentralCostData,
   buildCentralCostItems,
@@ -77,6 +78,19 @@ const costEntry = (overrides: Partial<CostEntry> = {}): CostEntry => ({
   amount: 0,
   date: '2026-01-01T00:00:00.000Z',
   source: 'manual',
+  ...overrides,
+})
+
+const contract = (overrides: Partial<Contract> = {}): Contract => ({
+  ...syncBase,
+  id: 'c-1',
+  userId: 'u1',
+  categoryId: 'heating',
+  provider: 'Provider GmbH',
+  monthlyCost: 999,
+  startDate: '2025-01-01T00:00:00.000Z',
+  autoRenewal: true,
+  reminderEnabled: false,
   ...overrides,
 })
 
@@ -387,5 +401,59 @@ describe('getCentralCostData / getCentralCosts (integration against IndexedDB)',
     await billRepository.save(bill({ year: 2026, totalAmount: 200 }))
     const items = await getCentralCosts()
     expect(items).toHaveLength(2)
+  })
+
+  it('excludes Contract from totalAmount/sourceBreakdown/category aggregation even when one is saved alongside Bill/WasteCost/CostEntry, and reports the real sourceBreakdown counts (Finding #3 + #5 Test A)', async () => {
+    const savedBill = await billRepository.save(bill({ year: 2026, totalAmount: 1000 }))
+    await billItemRepository.save(billItem(savedBill.id, { categoryId: 'heating', amount: 1000 }))
+    await wasteCostRepository.save(wasteCost({ year: 2026, amount: 240 }))
+    await costEntryRepository.save(costEntry({ amount: 100, date: '2026-05-01T00:00:00.000Z', categoryId: 'water' }))
+    // A Contract with a deliberately large, easy-to-spot monthlyCost - it
+    // must never appear as an actual cost anywhere in the result.
+    await contractRepository.save(contract({ monthlyCost: 999 }))
+
+    const data = await getCentralCostData(2026)
+
+    expect(data.summary.billAmount).toBe(1000)
+    expect(data.summary.wasteAmount).toBe(240)
+    expect(data.summary.manualAmount).toBe(100)
+    expect(data.summary.totalAmount).toBe(1340)
+
+    expect(data.sourceBreakdown).toEqual([
+      { source: 'bill', amount: 1000, count: 1 },
+      { source: 'waste', amount: 240, count: 1 },
+      { source: 'manual', amount: 100, count: 1 },
+    ])
+
+    // 999 (the Contract's monthlyCost) never appears anywhere in the
+    // aggregated amounts, category breakdown, or item list.
+    const allAmounts = [
+      data.summary.totalAmount,
+      data.summary.billAmount,
+      data.summary.wasteAmount,
+      data.summary.manualAmount,
+      ...data.categories.map((category) => category.amount),
+      ...data.items.map((item) => item.amount),
+    ]
+    expect(allAmounts).not.toContain(999)
+    expect(data.categories.some((category) => category.amount === 999)).toBe(false)
+  })
+
+  it('excludes a CostEntry linked to a real, co-present Bill from the total - it is not counted a second time (Finding #5 Test B)', async () => {
+    const savedBill = await billRepository.save(bill({ id: 'bill-1', year: 2026, totalAmount: 1000 }))
+    await costEntryRepository.save(
+      costEntry({ amount: 1000, date: '2026-05-01T00:00:00.000Z', billId: savedBill.id }),
+    )
+
+    const data = await getCentralCostData(2026)
+
+    expect(data.summary.totalAmount).toBe(1000)
+    expect(data.summary.billAmount).toBe(1000)
+    expect(data.summary.manualAmount).toBe(0)
+
+    const billItems = data.items.filter((item) => item.source === 'bill')
+    const manualItems = data.items.filter((item) => item.source === 'manual')
+    expect(billItems).toHaveLength(1)
+    expect(manualItems).toHaveLength(0)
   })
 })

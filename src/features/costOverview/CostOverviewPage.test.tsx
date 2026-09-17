@@ -69,7 +69,7 @@ const populatedData: CentralCostData = {
         type: 'possible_duplicate_waste',
         year: 2026,
         description:
-          'Für 2026 wurden Müllkosten sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie diese Positionen.',
+          'Mögliche Doppelzählung: Müllkosten wurden für 2026 sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.',
       },
     ],
   },
@@ -93,7 +93,7 @@ const populatedData: CentralCostData = {
       type: 'possible_duplicate_waste',
       year: 2026,
       description:
-        'Für 2026 wurden Müllkosten sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie diese Positionen.',
+        'Mögliche Doppelzählung: Müllkosten wurden für 2026 sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.',
     },
   ],
 }
@@ -121,6 +121,15 @@ describe('CostOverviewPage', () => {
     expect(screen.getByText(money(1000))).toBeInTheDocument()
     expect(screen.getAllByText(money(100)).length).toBeGreaterThan(0)
     expect(screen.getAllByText(money(40)).length).toBeGreaterThan(0)
+  })
+
+  it('labels the total "Gesamtkosten" with an explanatory source breakdown, distinct from the statistics page\'s "Abrechnungskosten"', async () => {
+    getCentralCostDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Gesamtkosten 2026')).toBeInTheDocument()
+    expect(screen.getByText('Abrechnungen + Müll + manuelle Kosten')).toBeInTheDocument()
   })
 
   it('surfaces a possible-duplicate warning without hiding or removing any amount', async () => {
