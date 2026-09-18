@@ -1,17 +1,18 @@
 import { ItemActions } from '../../../components/ItemActions'
-import type { Contract } from '../../../domain/models/entities'
+import type { Category, Contract } from '../../../domain/models/entities'
 import { daysUntil } from '../../../utils/date'
 import { formatCurrency, formatDate } from '../../../utils/formatters'
 import { ContractStatusBadge } from './ContractStatusBadge'
 
 interface ContractListItemProps {
   contract: Contract
+  category: Category | undefined
   onOpen: () => void
   onEdit: () => void
   onDelete: () => void
 }
 
-export function ContractListItem({ contract, onOpen, onEdit, onDelete }: ContractListItemProps) {
+export function ContractListItem({ contract, category, onOpen, onEdit, onDelete }: ContractListItemProps) {
   const remaining = contract.calculatedCancellationDate ? daysUntil(contract.calculatedCancellationDate) : undefined
 
   return (
@@ -21,6 +22,12 @@ export function ContractListItem({ contract, onOpen, onEdit, onDelete }: Contrac
           <div className="min-w-0">
             <p className="text-sm font-medium text-neutral-900">{contract.provider}</p>
             {contract.tariff ? <p className="text-xs text-neutral-500">{contract.tariff}</p> : null}
+            {category ? (
+              <p className="mt-1 flex items-center gap-1 text-xs text-neutral-500">
+                <span aria-hidden="true">{category.icon}</span>
+                {category.name}
+              </p>
+            ) : null}
           </div>
           <ContractStatusBadge contract={contract} />
         </div>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/feedback/ToastProvider'
@@ -56,9 +56,128 @@ describe('BillsPage', () => {
 
     renderBillsApp()
     await waitForLoadingToFinish()
-    expect(screen.getByText('2025')).toBeInTheDocument()
+    expect(screen.getAllByText('2025').length).toBeGreaterThan(0)
     // total (1170) < advancePayments (2302.20) -> Guthaben, not Nachzahlung.
     expect(screen.getByText(/Guthaben/)).toBeInTheDocument()
+  })
+
+  it('sorts newest year first by default (unchanged from before the new controls)', async () => {
+    await createBillWithItems({
+      type: 'utility',
+      year: 2024,
+      advancePayments: 0,
+      items: [{ categoryId: 'heating', description: 'Heizung', amount: 500 }],
+    })
+    await createBillWithItems({
+      type: 'operating_cost',
+      year: 2025,
+      advancePayments: 0,
+      items: [{ categoryId: 'water', description: 'Wasser', amount: 800 }],
+    })
+    await createBillWithItems({
+      type: 'annual_statement',
+      year: 2026,
+      advancePayments: 0,
+      items: [{ categoryId: 'electricity', description: 'Strom', amount: 300 }],
+    })
+
+    renderBillsApp()
+    await waitForLoadingToFinish()
+
+    const itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts[0]).toContain('2026')
+    expect(itemTexts[1]).toContain('2025')
+    expect(itemTexts[2]).toContain('2024')
+  })
+
+  it('filters bills by search text (year, type label, and amount)', async () => {
+    await createBillWithItems({
+      type: 'utility',
+      year: 2024,
+      advancePayments: 0,
+      items: [{ categoryId: 'heating', description: 'Heizung', amount: 500 }],
+    })
+    await createBillWithItems({
+      type: 'operating_cost',
+      year: 2025,
+      advancePayments: 0,
+      items: [{ categoryId: 'water', description: 'Wasser', amount: 800 }],
+    })
+
+    renderBillsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Abrechnungen durchsuchen'), { target: { value: 'Betriebskosten' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('Betriebskostenabrechnung')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Abrechnungen durchsuchen'), { target: { value: '500' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('Nebenkostenabrechnung')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Abrechnungen durchsuchen'), { target: { value: 'does-not-exist' } })
+    expect(screen.getByText('Keine Abrechnungen gefunden. Passe deine Suche oder Filter an.')).toBeInTheDocument()
+  })
+
+  it('filters bills by year', async () => {
+    await createBillWithItems({
+      type: 'utility',
+      year: 2024,
+      advancePayments: 0,
+      items: [{ categoryId: 'heating', description: 'Heizung', amount: 500 }],
+    })
+    await createBillWithItems({
+      type: 'operating_cost',
+      year: 2025,
+      advancePayments: 0,
+      items: [{ categoryId: 'water', description: 'Wasser', amount: 800 }],
+    })
+
+    renderBillsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '2025' } })
+
+    const itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts).toHaveLength(1)
+    expect(itemTexts[0]).toContain('2025')
+  })
+
+  it('sorts bills by amount when a different sort option is chosen', async () => {
+    await createBillWithItems({
+      type: 'utility',
+      year: 2024,
+      advancePayments: 0,
+      items: [{ categoryId: 'heating', description: 'Heizung', amount: 500 }],
+    })
+    await createBillWithItems({
+      type: 'operating_cost',
+      year: 2025,
+      advancePayments: 0,
+      items: [{ categoryId: 'water', description: 'Wasser', amount: 800 }],
+    })
+    await createBillWithItems({
+      type: 'annual_statement',
+      year: 2026,
+      advancePayments: 0,
+      items: [{ categoryId: 'electricity', description: 'Strom', amount: 300 }],
+    })
+
+    renderBillsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Sortierung'), { target: { value: 'amount_asc' } })
+
+    const itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts[0]).toContain('2026') // 300 €
+    expect(itemTexts[1]).toContain('2024') // 500 €
+    expect(itemTexts[2]).toContain('2025') // 800 €
   })
 
   it('deletes a bill (and its items) after confirmation', async () => {

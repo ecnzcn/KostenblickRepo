@@ -14,6 +14,7 @@ import type { Bill, BillItem, CostEntry, WasteCost } from '../../domain/models/e
 import { formatCurrency } from '../../utils/formatters'
 import { BillDetailPage } from '../bills/BillDetailPage'
 import { CostDetailPage } from '../costs/CostDetailPage'
+import { StatisticsPage } from '../statistics/StatisticsPage'
 import { WasteCostDetailPage } from '../waste/WasteCostDetailPage'
 
 const syncBase = {
@@ -83,6 +84,7 @@ function renderPage() {
           <Route path="/abrechnungen/:id" element={<BillDetailPage />} />
           <Route path="/muell/:id" element={<WasteCostDetailPage />} />
           <Route path="/kosten/:id" element={<CostDetailPage />} />
+          <Route path="/statistik" element={<StatisticsPage />} />
         </Routes>
       </MemoryRouter>
     </ToastProvider>,
@@ -172,5 +174,19 @@ describe('CostOverviewPage (integration: IndexedDB fixtures -> use case -> page)
     renderPage()
 
     await waitFor(() => expect(screen.getAllByText(new RegExp(`${year} · Kein Einzeldatum`)).length).toBe(2))
+  })
+
+  it('explains the Gesamtkosten definition and links to the real Statistik page', async () => {
+    const year = new Date().getFullYear()
+    await billRepository.save(bill({ id: 'b1', year, totalAmount: 500 }))
+
+    renderPage()
+    await waitFor(() =>
+      expect(screen.getByText(/Die Kostenübersicht zeigt die tatsächlichen Gesamtkosten/)).toBeInTheDocument(),
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: /Zur Statistik/ }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Statistik' })).toBeInTheDocument())
   })
 })

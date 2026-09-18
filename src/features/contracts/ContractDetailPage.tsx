@@ -17,6 +17,7 @@ import {
 } from '../../domain/usecases/contracts'
 import { getDocument, getDocumentBlob, saveDocumentFile, validateDocumentFile } from '../../domain/usecases/documents'
 import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
+import { useCategories } from '../../hooks/useCategories'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { ContractStatusBadge } from './components/ContractStatusBadge'
 
@@ -43,6 +44,7 @@ export function ContractDetailPage() {
 
   const [contract, setContract] = useState<Contract | undefined>()
   const [reminders, setReminders] = useState<Reminder[]>([])
+  const { categories } = useCategories()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -156,6 +158,8 @@ export function ContractDetailPage() {
   if (loading) return <LoadingState />
   if (error || !contract) return <ErrorState message="Dieser Vertrag wurde nicht gefunden." />
 
+  const category = categories.find((c) => c.id === contract.categoryId)
+
   return (
     <>
       <PageHeader title={contract.provider} subtitle={contract.tariff} />
@@ -164,22 +168,36 @@ export function ContractDetailPage() {
           <p className="text-sm text-neutral-500">Status</p>
           <ContractStatusBadge contract={contract} />
         </div>
-        <div className="grid grid-cols-2 gap-4 rounded-2xl border border-neutral-200 bg-white p-5">
-          <DetailRow label="Monatliche Kosten" value={`${formatCurrency(contract.monthlyCost)}/Monat`} />
-          {contract.yearlyCost !== undefined ? (
-            <DetailRow label="Jährliche Kosten" value={`${formatCurrency(contract.yearlyCost)}/Jahr`} />
-          ) : null}
-          <DetailRow label="Beginn" value={formatDate(contract.startDate)} />
-          {contract.endDate ? <DetailRow label="Ende" value={formatDate(contract.endDate)} /> : null}
-          {contract.cancellationPeriodValue !== undefined && contract.cancellationPeriodUnit ? (
-            <DetailRow
-              label="Kündigungsfrist"
-              value={`${contract.cancellationPeriodValue} ${CANCELLATION_UNIT_LABEL[contract.cancellationPeriodUnit]}`}
-            />
-          ) : null}
-          {contract.calculatedCancellationDate ? (
-            <DetailRow label="Kündigung bis" value={formatDate(contract.calculatedCancellationDate)} />
-          ) : null}
+        {category ? (
+          <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-5 py-4">
+            <p className="text-sm text-neutral-500">Kategorie</p>
+            <p className="flex items-center gap-2 text-sm font-medium text-neutral-900">
+              <span aria-hidden="true">{category.icon}</span>
+              {category.name}
+            </p>
+          </div>
+        ) : null}
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <div className="grid grid-cols-2 gap-4">
+            <DetailRow label="Monatliche Kosten" value={`${formatCurrency(contract.monthlyCost)}/Monat`} />
+            {contract.yearlyCost !== undefined ? (
+              <DetailRow label="Jährliche Kosten" value={`${formatCurrency(contract.yearlyCost)}/Jahr`} />
+            ) : null}
+            <DetailRow label="Beginn" value={formatDate(contract.startDate)} />
+            {contract.endDate ? <DetailRow label="Ende" value={formatDate(contract.endDate)} /> : null}
+            {contract.cancellationPeriodValue !== undefined && contract.cancellationPeriodUnit ? (
+              <DetailRow
+                label="Kündigungsfrist"
+                value={`${contract.cancellationPeriodValue} ${CANCELLATION_UNIT_LABEL[contract.cancellationPeriodUnit]}`}
+              />
+            ) : null}
+            {contract.calculatedCancellationDate ? (
+              <DetailRow label="Kündigung bis" value={formatDate(contract.calculatedCancellationDate)} />
+            ) : null}
+          </div>
+          <p className="mt-4 text-xs text-neutral-400">
+            Vertraglich vereinbart - nicht in der Kostenübersicht enthalten.
+          </p>
         </div>
         {reminders.length > 0 ? (
           <div className="rounded-2xl border border-neutral-200 bg-white p-5">

@@ -1,7 +1,9 @@
 import { EmptyState } from '../../components/EmptyState'
 import { ErrorState } from '../../components/ErrorState'
+import { InfoNote } from '../../components/InfoNote'
 import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { ROUTES } from '../../constants/navigation'
 import { CostOverviewCategoryChart } from './components/CostOverviewCategoryChart'
 import { CostOverviewItemsList } from './components/CostOverviewItemsList'
 import { CostOverviewMonthlyChart } from './components/CostOverviewMonthlyChart'
@@ -33,6 +35,12 @@ export function CostOverviewPage() {
           </div>
 
           <CostOverviewSummaryCard summary={data.summary} />
+
+          <InfoNote
+            message="Die Kostenübersicht zeigt die tatsächlichen Gesamtkosten (Abrechnungen, Müll und manuelle Kosten). Vertraglich vereinbarte Kosten sind nicht enthalten, da sie noch keine tatsächlich angefallenen Kosten sind - deshalb kann die Statistik eine andere Summe zeigen."
+            linkTo={ROUTES.statistics}
+            linkLabel="Zur Statistik"
+          />
 
           <CostOverviewWarnings warnings={data.warnings} />
 

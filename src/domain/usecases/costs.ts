@@ -70,3 +70,25 @@ export async function listCostEntries(): Promise<CostEntry[]> {
   const entries = await costEntryRepository.getAll()
   return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
+
+/** Every year with at least one CostEntry, ascending - the basis for the
+ * year selector on /kosten (same shape as getWasteCostYears/
+ * getCentralCostYears). */
+export function getCostEntryYears(entries: CostEntry[]): number[] {
+  const years = new Set<number>()
+  for (const entry of entries) {
+    const date = new Date(entry.date)
+    if (!Number.isNaN(date.getTime())) years.add(date.getUTCFullYear())
+  }
+  return [...years].sort((a, b) => a - b)
+}
+
+/** Entries whose CostEntry.date falls in the given year - a pure filter
+ * over an already-loaded list, never a new IndexedDB query, and never an
+ * invented date (CostEntry.date is always a real, user-entered date). */
+export function listCostEntriesByYear(entries: CostEntry[], year: number): CostEntry[] {
+  return entries.filter((entry) => {
+    const date = new Date(entry.date)
+    return !Number.isNaN(date.getTime()) && date.getUTCFullYear() === year
+  })
+}

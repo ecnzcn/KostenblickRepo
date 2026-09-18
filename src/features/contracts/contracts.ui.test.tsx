@@ -92,6 +92,22 @@ describe('ContractsPage', () => {
     expect(screen.getByText('Dringend')).toBeInTheDocument()
   })
 
+  it('shows the contract category next to each contract in the list', async () => {
+    await createContract({
+      categoryId: 'electricity',
+      provider: 'E.ON',
+      monthlyCost: 89,
+      startDate: '2024-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Strom')).toBeInTheDocument()
+  })
+
   it('deletes a contract after confirmation', async () => {
     await createContract({
       categoryId: 'internet',
@@ -171,6 +187,26 @@ describe('ContractFormPage (edit)', () => {
       expect(contracts).toHaveLength(1)
       expect(contracts[0]?.monthlyCost).toBe(45)
     })
+  })
+})
+
+describe('ContractDetailPage commitment transparency', () => {
+  it('shows the category and a note that contract costs are not part of the cost overview', async () => {
+    const created = await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      monthlyCost: 40,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp(`/vertraege/${created.id}`)
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Kategorie')).toBeInTheDocument()
+    expect(screen.getByText('Internet')).toBeInTheDocument()
+    expect(screen.getByText('Vertraglich vereinbart - nicht in der Kostenübersicht enthalten.')).toBeInTheDocument()
   })
 })
 

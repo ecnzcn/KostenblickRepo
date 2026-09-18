@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { HashRouter } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { HashRouter, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { StatisticsPage } from './StatisticsPage'
 import { deleteDatabase } from '../../database/database'
 import { billItemRepository, billRepository } from '../../domain/repositories/indexedDbRepositories'
 import type { Bill, BillItem } from '../../domain/models/entities'
+import { CostOverviewPage } from '../costOverview/CostOverviewPage'
 import { formatCurrency } from '../../utils/formatters'
 
 const syncBase = {
@@ -85,5 +86,30 @@ describe('StatisticsPage (integration: IndexedDB fixtures -> use case -> page)',
 
     const yearSelect = screen.getByLabelText('Jahr') as HTMLSelectElement
     expect(yearSelect.value).toBe(String(year))
+  })
+
+  it('explains the Abrechnungskosten-vs-Gesamtkosten distinction and links to the real Kostenübersicht page', async () => {
+    const year = new Date().getFullYear()
+    await billRepository.save(bill({ id: 'b1', year, totalAmount: 1000 }))
+    await billItemRepository.save(billItem({ id: 'i1', billId: 'b1', categoryId: 'heating', amount: 1000 }))
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<StatisticsPage />} />
+          <Route path="/kostenuebersicht" element={<CostOverviewPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Die Statistik zeigt ausschließlich Abrechnungskosten/),
+      ).toBeInTheDocument(),
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: /Zur Kostenübersicht/ }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Kostenübersicht' })).toBeInTheDocument())
   })
 })

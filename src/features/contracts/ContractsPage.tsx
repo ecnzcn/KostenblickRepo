@@ -5,11 +5,14 @@ import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { useToast } from '../../components/feedback/useToast'
 import { contractDetailPath, contractEditPath, ROUTES } from '../../constants/navigation'
+import { useCategories } from '../../hooks/useCategories'
 import { ContractListItem } from './components/ContractListItem'
 import { useContracts } from './hooks/useContracts'
 
 export function ContractsPage() {
   const { contracts, loading, error, refetch, remove } = useContracts()
+  const { categories } = useCategories()
+  const categoriesById = new Map(categories.map((category) => [category.id, category]))
   const navigate = useNavigate()
   const { showToast } = useToast()
 
@@ -48,6 +51,7 @@ export function ContractsPage() {
               <ContractListItem
                 key={contract.id}
                 contract={contract}
+                category={categoriesById.get(contract.categoryId)}
                 onOpen={() => navigate(contractDetailPath(contract.id))}
                 onEdit={() => navigate(contractEditPath(contract.id))}
                 onDelete={() => handleDelete(contract.id)}
