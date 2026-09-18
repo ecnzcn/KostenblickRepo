@@ -7,11 +7,19 @@ import { deleteDocumentIfUnreferenced } from './documents'
 import { sumBillItems } from './validation'
 
 export interface BillItemInput {
+  /** Set only when this input represents an existing BillItem being
+   * resubmitted (edit flow) - omitted for a newly added item. Must match an
+   * item that currently belongs to the Bill being updated; an id that
+   * doesn't (unknown/foreign/stale) is never treated as a reference to an
+   * existing item - it is built exactly like a brand-new item instead, so a
+   * stray id can never attach to or overwrite someone else's BillItem. */
+  id?: string
   categoryId: string
   description: string
   amount: number
-  /** Only set by the OCR import flow; manual entry (the default) always
-   * saves items as fully confirmed, matching prior behavior. */
+  /** Only set by the OCR import flow, or by resubmitting an existing item's
+   * own values on edit; manual entry (the default) always saves items as
+   * fully confirmed, matching prior behavior. */
   confidence?: number
   sourceText?: string
   manuallyVerified?: boolean
@@ -84,21 +92,50 @@ export function validateBillInput(input: BillInput): string[] {
   return errors
 }
 
-function buildItems(billId: string, items: BillItemInput[], now: string): BillItem[] {
-  return items.map((item) => ({
-    id: generateId(),
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-    syncVersion: 1,
-    billId,
-    categoryId: item.categoryId,
-    description: item.description,
-    amount: item.amount,
-    confidence: item.confidence ?? 1,
-    sourceText: item.sourceText,
-    manuallyVerified: item.manuallyVerified ?? true,
-  }))
+/**
+ * Builds the persisted BillItem set for a save. An input re-identified as an
+ * existing item (via `id`, matched only against `existingItems` - never by
+ * position, description, amount or category) keeps that item's `id` and
+ * `createdAt`; its OCR provenance (`confidence`/`sourceText`/
+ * `manuallyVerified`) is taken from the input when provided (the UI already
+ * decides there whether a field was actually changed - see BillItemRow's
+ * markEdited) and otherwise falls back to the existing item's own values, so
+ * a caller that omits them never wipes them out. An input without a
+ * recognized `id` is built exactly like the previous behavior: a fresh item
+ * with the established manual-entry defaults (`confidence: 1`,
+ * `manuallyVerified: true`, no sourceText).
+ */
+function buildItems(billId: string, items: BillItemInput[], existingItems: BillItem[], now: string): BillItem[] {
+  const existingById = new Map(existingItems.map((item) => [item.id, item]))
+  return items.map((item) => {
+    const existing = item.id !== undefined ? existingById.get(item.id) : undefined
+    if (existing) {
+      return {
+        ...existing,
+        updatedAt: now,
+        categoryId: item.categoryId,
+        description: item.description,
+        amount: item.amount,
+        confidence: item.confidence ?? existing.confidence,
+        sourceText: item.sourceText ?? existing.sourceText,
+        manuallyVerified: item.manuallyVerified ?? existing.manuallyVerified,
+      }
+    }
+    return {
+      id: generateId(),
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      syncVersion: 1,
+      billId,
+      categoryId: item.categoryId,
+      description: item.description,
+      amount: item.amount,
+      confidence: item.confidence ?? 1,
+      sourceText: item.sourceText,
+      manuallyVerified: item.manuallyVerified ?? true,
+    }
+  })
 }
 
 /**
@@ -119,7 +156,7 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
 
   const now = new Date().toISOString()
   const billId = generateId()
-  const items = buildItems(billId, input.items, now)
+  const items = buildItems(billId, input.items, [], now)
   const totalAmountConfirmed = input.totalAmount !== undefined
   const totalAmount = input.totalAmount ?? sumBillItems(items)
   const { balance, balanceType } = calculateBillBalance(totalAmount, input.advancePayments)
@@ -169,7 +206,8 @@ export async function updateBillWithItems(id: string, input: BillInput): Promise
   if (!existing) throw new Error('Abrechnung wurde nicht gefunden.')
 
   const now = new Date().toISOString()
-  const items = buildItems(id, input.items, now)
+  const existingItems = await listBillItems(id)
+  const items = buildItems(id, input.items, existingItems, now)
   const itemSum = sumBillItems(items)
 
   // A confirmed totalAmount (from a reviewed import) is preserved on edit
@@ -195,12 +233,13 @@ export async function updateBillWithItems(id: string, input: BillInput): Promise
     balanceType,
   })
 
-  // Editing a bill replaces its full item set: soft-delete the previous
-  // items (preserving them for the sync queue) and create fresh ones from
-  // the submitted form rather than diffing individual rows.
-  const existingItems = await listBillItems(id)
+  // Items re-identified by id in `items` (see buildItems) are updated in
+  // place, preserving their id/createdAt/OCR provenance; anything from the
+  // previous item set that no longer appears - because it was removed in
+  // the form - is soft-deleted, same as before.
+  const keptIds = new Set(items.map((item) => item.id))
   for (const item of existingItems) {
-    await billItemRepository.delete(item.id)
+    if (!keptIds.has(item.id)) await billItemRepository.delete(item.id)
   }
 
   const savedItems: BillItem[] = []

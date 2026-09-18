@@ -332,7 +332,7 @@ export function detectCostAggregationWarnings(
     warnings.push({
       type: 'possible_duplicate_waste',
       year,
-      description: `Mögliche Doppelzählung: Müllkosten wurden für ${year} sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.`,
+      description: `Möglicher Überschneidungsfall: Für ${year} wurden Müllkosten sowohl innerhalb einer Abrechnung als auch separat unter Müllkosten erfasst. Das kann, muss aber nicht dieselbe Kostenposition doppelt sein - bitte prüfen Sie, ob dieselbe Ausgabe bereits an anderer Stelle berücksichtigt wurde.`,
     })
   }
 
@@ -343,7 +343,7 @@ export function detectCostAggregationWarnings(
     warnings.push({
       type: 'possible_duplicate_manual_entry',
       year,
-      description: `Mögliche Doppelzählung: Müllkosten wurden für ${year} sowohl manuell erfasst als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.`,
+      description: `Möglicher Überschneidungsfall: Für ${year} wurden Müllkosten sowohl manuell erfasst als auch separat unter Müllkosten erfasst. Das kann, muss aber nicht dieselbe Kostenposition doppelt sein - bitte prüfen Sie, ob dieselbe Ausgabe bereits an anderer Stelle berücksichtigt wurde.`,
     })
   }
 

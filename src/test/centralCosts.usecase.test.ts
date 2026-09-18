@@ -272,6 +272,47 @@ describe('detectCostAggregationWarnings', () => {
     expect(bills[0]?.totalAmount).toBe(1000)
     expect(wasteCosts[0]?.amount).toBe(100)
   })
+
+  it('produces no warning for a Bill and a CostEntry in the same non-waste category and year - category+year alone is never proof of a duplicate', () => {
+    // Deliberate real-world counterexample from the Phase 11A design review:
+    // a 500€ caretaker line item inside a Bill and a separate, legitimate
+    // 100€ caretaker CostEntry (e.g. a different, unrelated expense) must
+    // never be flagged - there is no belief-worthy signal here, only a
+    // coincidental category/year match, and detectCostAggregationWarnings
+    // must not invent one.
+    const bills = [bill({ id: 'b1', year: 2026, totalAmount: 500 })]
+    const items = [billItem('b1', { categoryId: 'caretaker', amount: 500 })]
+    const entries = [costEntry({ categoryId: 'caretaker', amount: 100, date: '2026-06-01T00:00:00.000Z' })]
+
+    expect(detectCostAggregationWarnings(bills, items, [], entries, 2026)).toEqual([])
+  })
+
+  it('still detects both existing waste-specific cases alongside an unrelated same-category Bill/CostEntry pair', () => {
+    const bills = [bill({ id: 'b1', year: 2026, totalAmount: 600 })]
+    const items = [billItem('b1', { categoryId: 'caretaker', amount: 500 }), billItem('b1', { categoryId: 'waste', amount: 100 })]
+    const wasteCosts = [wasteCost({ year: 2026, amount: 100 })]
+    const entries = [
+      costEntry({ categoryId: 'caretaker', amount: 100, date: '2026-06-01T00:00:00.000Z' }),
+      costEntry({ categoryId: 'waste', amount: 50, date: '2026-07-01T00:00:00.000Z' }),
+    ]
+
+    const warnings = detectCostAggregationWarnings(bills, items, wasteCosts, entries, 2026)
+    expect(warnings.map((warning) => warning.type).sort()).toEqual(
+      ['possible_duplicate_manual_entry', 'possible_duplicate_waste'].sort(),
+    )
+  })
+
+  it('a CostEntry explicitly linked to a Bill via billId is excluded from consideration entirely, not flagged', () => {
+    const bills = [bill({ id: 'b1', year: 2026, totalAmount: 500 })]
+    const items = [billItem('b1', { categoryId: 'waste', amount: 100 })]
+    const wasteCosts = [wasteCost({ year: 2026, amount: 100 })]
+    const linkedEntry = costEntry({ categoryId: 'waste', amount: 100, date: '2026-01-01T00:00:00.000Z', billId: 'b1' })
+
+    const warnings = detectCostAggregationWarnings(bills, items, wasteCosts, [linkedEntry], 2026)
+    // Only the Bill-vs-WasteCost warning fires; the linked entry contributes
+    // no separate 'possible_duplicate_manual_entry' warning of its own.
+    expect(warnings.map((warning) => warning.type)).toEqual(['possible_duplicate_waste'])
+  })
 })
 
 describe('getCentralCostSummary (no blind summation, explicit duplicate signalling)', () => {

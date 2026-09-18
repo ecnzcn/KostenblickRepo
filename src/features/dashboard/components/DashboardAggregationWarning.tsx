@@ -18,7 +18,7 @@ export function DashboardAggregationWarning({ warnings }: DashboardAggregationWa
 
   return (
     <div role="alert" className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
-      <p className="font-medium">⚠ Mögliche Doppelzählung erkannt</p>
+      <p className="font-medium">⚠ Möglicher Überschneidungsfall</p>
       <Link to={ROUTES.costOverview} className="mt-1 inline-flex min-h-11 items-center font-medium underline">
         Details in der Kostenübersicht
       </Link>

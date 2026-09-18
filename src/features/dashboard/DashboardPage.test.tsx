@@ -211,7 +211,7 @@ describe('DashboardPage', () => {
     renderPage()
     await waitForLoadingToFinish()
 
-    expect(screen.queryByText('⚠ Mögliche Doppelzählung erkannt')).not.toBeInTheDocument()
+    expect(screen.queryByText('⚠ Möglicher Überschneidungsfall')).not.toBeInTheDocument()
   })
 
   it('shows a compact aggregation warning with a link to the cost overview when the year has a possible duplicate', async () => {
@@ -222,14 +222,14 @@ describe('DashboardPage', () => {
           type: 'possible_duplicate_waste',
           year: 2026,
           description:
-            'Mögliche Doppelzählung: Müllkosten wurden für 2026 sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.',
+            'Möglicher Überschneidungsfall: Für 2026 wurden Müllkosten sowohl innerhalb einer Abrechnung als auch separat unter Müllkosten erfasst. Das kann, muss aber nicht dieselbe Kostenposition doppelt sein - bitte prüfen Sie, ob dieselbe Ausgabe bereits an anderer Stelle berücksichtigt wurde.',
         },
       ],
     })
     renderPage()
     await waitForLoadingToFinish()
 
-    expect(screen.getByRole('alert')).toHaveTextContent('⚠ Mögliche Doppelzählung erkannt')
+    expect(screen.getByRole('alert')).toHaveTextContent('⚠ Möglicher Überschneidungsfall')
     // The Dashboard hint itself must not claim a confirmed or exact duplicate.
     expect(screen.queryByText(/wurden doppelt gezählt/)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Details in der Kostenübersicht' })).toHaveAttribute(

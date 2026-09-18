@@ -112,7 +112,7 @@ describe('CostOverviewPage (integration: IndexedDB fixtures -> use case -> page)
 
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('⚠ Mögliche Doppelzählung')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('⚠ Möglicher Überschneidungsfall')).toBeInTheDocument())
     expect(screen.getAllByText(money(1100)).length).toBeGreaterThan(0)
   })
 })

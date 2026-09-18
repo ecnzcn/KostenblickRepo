@@ -17,7 +17,7 @@ export function CostOverviewWarnings({ warnings }: CostOverviewWarningsProps) {
           key={`${warning.type}-${warning.year}-${index}`}
           className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800"
         >
-          <p className="font-medium">⚠ Mögliche Doppelzählung</p>
+          <p className="font-medium">⚠ Möglicher Überschneidungsfall</p>
           <p className="mt-1">{warning.description}</p>
         </div>
       ))}

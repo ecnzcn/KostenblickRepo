@@ -12,6 +12,7 @@ import { BILL_TYPE_LABELS, deleteBillWithItems, getBill, listBillItems, removeBi
 import { getDocument, getDocumentBlob } from '../../domain/usecases/documents'
 import { categoryRepository } from '../../domain/repositories/categories'
 import { formatCurrency, formatDate } from '../../utils/formatters'
+import { ConfidenceBadge } from './import/components/ConfidenceBadge'
 
 export function BillDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -152,11 +153,18 @@ export function BillDetailPage() {
               {items.map((item) => {
                 const category = item.categoryId ? categoriesById.get(item.categoryId) : undefined
                 return (
-                  <li key={item.id} className="flex items-center justify-between py-2 text-sm">
-                    <span className="text-neutral-700">
-                      {category ? `${category.icon} ${category.name}` : item.description}
-                    </span>
-                    <span className="font-medium text-neutral-900">{formatCurrency(item.amount)}</span>
+                  <li key={item.id} className="py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-700">
+                        {category ? `${category.icon} ${category.name}` : item.description}
+                      </span>
+                      <span className="font-medium text-neutral-900">{formatCurrency(item.amount)}</span>
+                    </div>
+                    {!item.manuallyVerified && (
+                      <div className="mt-1">
+                        <ConfidenceBadge confidence={item.confidence} manuallyVerified={item.manuallyVerified} />
+                      </div>
+                    )}
                   </li>
                 )
               })}

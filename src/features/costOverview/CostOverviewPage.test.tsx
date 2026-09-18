@@ -69,7 +69,7 @@ const populatedData: CentralCostData = {
         type: 'possible_duplicate_waste',
         year: 2026,
         description:
-          'Mögliche Doppelzählung: Müllkosten wurden für 2026 sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.',
+          'Möglicher Überschneidungsfall: Für 2026 wurden Müllkosten sowohl innerhalb einer Abrechnung als auch separat unter Müllkosten erfasst. Das kann, muss aber nicht dieselbe Kostenposition doppelt sein - bitte prüfen Sie, ob dieselbe Ausgabe bereits an anderer Stelle berücksichtigt wurde.',
       },
     ],
   },
@@ -93,7 +93,7 @@ const populatedData: CentralCostData = {
       type: 'possible_duplicate_waste',
       year: 2026,
       description:
-        'Mögliche Doppelzählung: Müllkosten wurden für 2026 sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst. Bitte prüfen Sie die betroffenen Einträge.',
+        'Möglicher Überschneidungsfall: Für 2026 wurden Müllkosten sowohl innerhalb einer Abrechnung als auch separat unter Müllkosten erfasst. Das kann, muss aber nicht dieselbe Kostenposition doppelt sein - bitte prüfen Sie, ob dieselbe Ausgabe bereits an anderer Stelle berücksichtigt wurde.',
     },
   ],
 }
@@ -137,8 +137,8 @@ describe('CostOverviewPage', () => {
     renderPage()
     await waitForLoadingToFinish()
 
-    expect(screen.getByText('⚠ Mögliche Doppelzählung')).toBeInTheDocument()
-    expect(screen.getByText(/sowohl in einer Abrechnung als auch separat unter Müllkosten erfasst/)).toBeInTheDocument()
+    expect(screen.getByText('⚠ Möglicher Überschneidungsfall')).toBeInTheDocument()
+    expect(screen.getByText(/sowohl innerhalb einer Abrechnung als auch separat unter Müllkosten erfasst/)).toBeInTheDocument()
     // The full total (including the possibly-duplicated waste amount) is still shown, not silently reduced.
     expect(screen.getAllByText(money(1140)).length).toBeGreaterThan(0)
   })

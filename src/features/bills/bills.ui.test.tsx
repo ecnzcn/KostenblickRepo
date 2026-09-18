@@ -215,6 +215,48 @@ describe('BillFormPage (edit) - confirmed total amount', () => {
   })
 })
 
+describe('BillDetailPage OCR provenance', () => {
+  it('shows a confidence badge for an item that was never manually verified', async () => {
+    const { bill } = await createBillWithItems({
+      type: 'annual_statement',
+      year: 2025,
+      advancePayments: 0,
+      items: [
+        {
+          categoryId: 'heating',
+          description: 'Heizung (erkannt)',
+          amount: 100,
+          confidence: 0.42,
+          sourceText: 'Heizkosten 100,00',
+          manuallyVerified: false,
+        },
+      ],
+    })
+
+    renderBillsApp(`/abrechnungen/${bill.id}`)
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('⚠ Prüfung empfohlen')).toBeInTheDocument()
+  })
+
+  it('shows no confidence badge for a manually verified item', async () => {
+    const { bill } = await createBillWithItems({
+      type: 'annual_statement',
+      year: 2025,
+      advancePayments: 0,
+      items: [{ categoryId: 'heating', description: 'Heizung', amount: 100 }],
+    })
+
+    renderBillsApp(`/abrechnungen/${bill.id}`)
+    await waitForLoadingToFinish()
+
+    expect(screen.queryByText('Automatisch erkannt')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bitte prüfen')).not.toBeInTheDocument()
+    expect(screen.queryByText('⚠ Prüfung empfohlen')).not.toBeInTheDocument()
+    expect(screen.queryByText('✓ Manuell bestätigt')).not.toBeInTheDocument()
+  })
+})
+
 describe('BillDetailPage document integration', () => {
   it('links the attached document to the document management page', async () => {
     const document = await saveDocumentFile(new File(['x'], 'nebenkosten.pdf', { type: 'application/pdf' }), 'bill')

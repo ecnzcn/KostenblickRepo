@@ -81,9 +81,13 @@ export function BillFormPage({ mode }: BillFormPageProps) {
           billItems.length > 0
             ? billItems.map((item) => ({
                 key: item.id,
+                id: item.id,
                 categoryId: item.categoryId ?? '',
                 description: item.description,
                 amountText: item.amount.toString().replace('.', ','),
+                confidence: item.confidence,
+                sourceText: item.sourceText,
+                manuallyVerified: item.manuallyVerified,
               }))
             : [newRow()],
         )
@@ -117,9 +121,13 @@ export function BillFormPage({ mode }: BillFormPageProps) {
 
     const parsedAdvancePayments = parseGermanAmount(advancePaymentsText)
     const parsedItems = items.map((item) => ({
+      id: item.id,
       categoryId: item.categoryId,
       description: item.description,
       amount: parseGermanAmount(item.amountText) ?? Number.NaN,
+      confidence: item.confidence,
+      sourceText: item.sourceText,
+      manuallyVerified: item.manuallyVerified,
     }))
 
     const input = {
