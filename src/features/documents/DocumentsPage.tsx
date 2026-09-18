@@ -36,7 +36,7 @@ function Chip({ active, label, onClick }: { active: boolean; label: string; onCl
     <button
       type="button"
       onClick={onClick}
-      className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-medium ${
+      className={`min-h-11 shrink-0 rounded-full border px-3 text-xs font-medium ${
         active ? 'border-accent bg-accent text-white' : 'border-neutral-300 bg-white text-neutral-700'
       }`}
     >

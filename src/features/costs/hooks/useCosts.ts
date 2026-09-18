@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CostEntry } from '../../../domain/models/entities'
 import { deleteCostEntry, getCostEntryYears, listCostEntries, listCostEntriesByYear } from '../../../domain/usecases/costs'
+import { DEFAULT_COST_FILTERS, type CostFilterOptions } from '../costFilters'
 
 interface UseCostsResult {
   entries: CostEntry[]
@@ -12,6 +13,8 @@ interface UseCostsResult {
   error: Error | undefined
   refetch: () => void
   remove: (id: string) => Promise<void>
+  filters: CostFilterOptions
+  setFilters: (next: Partial<CostFilterOptions>) => void
 }
 
 /** Loads every CostEntry exactly once and derives years/entries-for-year in
@@ -26,6 +29,7 @@ export function useCosts(): UseCostsResult {
   const [reloadToken, setReloadToken] = useState(0)
   const [selectedYear, setSelectedYear] = useState(() => new Date().getUTCFullYear())
   const hasAutoSelected = useRef(false)
+  const [filters, setFiltersState] = useState<CostFilterOptions>(DEFAULT_COST_FILTERS)
 
   useEffect(() => {
     let cancelled = false
@@ -67,8 +71,24 @@ export function useCosts(): UseCostsResult {
     [refetch],
   )
 
+  const setFilters = useCallback((next: Partial<CostFilterOptions>) => {
+    setFiltersState((current) => ({ ...current, ...next }))
+  }, [])
+
   const years = useMemo(() => getCostEntryYears(entries), [entries])
   const entriesForYear = useMemo(() => listCostEntriesByYear(entries, selectedYear), [entries, selectedYear])
 
-  return { entries, years, selectedYear, setSelectedYear, entriesForYear, loading, error, refetch, remove }
+  return {
+    entries,
+    years,
+    selectedYear,
+    setSelectedYear,
+    entriesForYear,
+    loading,
+    error,
+    refetch,
+    remove,
+    filters,
+    setFilters,
+  }
 }

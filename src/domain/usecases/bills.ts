@@ -178,7 +178,6 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
     balance,
     balanceType,
     documentId: input.documentId,
-    ocrStatus: input.documentId ? 'verified' : 'not_started',
   }
 
   const savedBill = await billRepository.save(bill)
@@ -276,7 +275,7 @@ export async function listBillItems(billId: string): Promise<BillItem[]> {
 export async function removeBillDocument(bill: Bill): Promise<Bill> {
   if (!bill.documentId) return bill
   const documentId = bill.documentId
-  const updated = await billRepository.save({ ...bill, documentId: undefined, ocrStatus: 'not_started' })
+  const updated = await billRepository.save({ ...bill, documentId: undefined })
   // The link is cleared first, so the reference check no longer sees this
   // bill as still holding the document.
   await deleteDocumentIfUnreferenced(documentId)

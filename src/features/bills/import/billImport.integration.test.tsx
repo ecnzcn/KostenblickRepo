@@ -89,7 +89,6 @@ describe('Bill import workflow (full pipeline)', () => {
     const bill = bills[0]!
     expect(bill.year).toBe(2025)
     expect(bill.documentId).toBeTruthy()
-    expect(bill.ocrStatus).toBe('verified')
 
     const items = await listBillItems(bill.id)
     expect(items.length).toBeGreaterThan(0)

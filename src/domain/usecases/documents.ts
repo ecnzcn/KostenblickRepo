@@ -225,15 +225,15 @@ export async function deleteDocumentIfUnreferenced(documentId: string | undefine
 
 /** Deletes a document unconditionally (used from the central Document
  * Management screen, where deleting a document is an explicit, direct
- * user action) and clears the `documentId` link - and, for a Bill, resets
- * its OCR status - on whatever entity still referenced it, so deleting a
- * document from /dokumente never leaves a dangling reference behind. */
+ * user action) and clears the `documentId` link on whatever entity still
+ * referenced it, so deleting a document from /dokumente never leaves a
+ * dangling reference behind. */
 export async function deleteDocumentAndClearReferences(documentId: string): Promise<void> {
   const linkedEntity = await findLinkedEntity(documentId)
   if (linkedEntity) {
     if (linkedEntity.entityType === 'bill') {
       const bill = await billRepository.getById(linkedEntity.entityId)
-      if (bill) await billRepository.save({ ...bill, documentId: undefined, ocrStatus: 'not_started' })
+      if (bill) await billRepository.save({ ...bill, documentId: undefined })
     } else if (linkedEntity.entityType === 'contract') {
       const contract = await contractRepository.getById(linkedEntity.entityId)
       if (contract) await contractRepository.save({ ...contract, documentId: undefined })

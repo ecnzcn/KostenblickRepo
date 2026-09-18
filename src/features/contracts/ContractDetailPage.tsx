@@ -23,9 +23,9 @@ import { ContractStatusBadge } from './components/ContractStatusBadge'
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs text-neutral-500">{label}</p>
-      <p className="text-sm font-medium text-neutral-900">{value}</p>
+      <p className="break-words text-sm font-medium text-neutral-900">{value}</p>
     </div>
   )
 }
@@ -224,7 +224,7 @@ export function ContractDetailPage() {
           <p className="mb-1 text-sm font-semibold text-neutral-900">Vertragsdokument</p>
           {contractDocument ? (
             <>
-              <p className="mb-3 text-sm text-neutral-600">{contractDocument.filename}</p>
+              <p className="mb-3 break-words text-sm text-neutral-600">{contractDocument.filename}</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"

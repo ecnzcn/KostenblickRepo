@@ -60,7 +60,6 @@ const bill = (overrides: Partial<Bill> = {}): Bill => ({
   advancePayments: 2302.2,
   balance: 184.2,
   balanceType: 'payment_due',
-  ocrStatus: 'not_started',
   ...overrides,
 })
 

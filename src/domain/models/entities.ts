@@ -50,7 +50,6 @@ export interface Bill extends SyncableEntity {
   balance: number
   balanceType: BalanceType
   documentId?: string
-  ocrStatus: OCRStatus
 }
 
 export interface BillItem extends SyncableEntity {

@@ -15,12 +15,13 @@ export function CostListItem({ entry, category, onOpen, onEdit, onDelete }: Cost
 
   return (
     <li className="rounded-2xl border border-neutral-200 bg-white p-4">
-      <button type="button" onClick={onOpen} className="flex w-full items-center justify-between text-left">
-        <div>
+      <button type="button" onClick={onOpen} className="flex w-full items-center justify-between gap-3 text-left">
+        <div className="min-w-0">
           <p className="text-sm font-medium text-neutral-900">{label}</p>
           <p className="text-xs text-neutral-500">{formatDate(entry.date)}</p>
+          {entry.notes ? <p className="truncate text-xs text-neutral-500">{entry.notes}</p> : null}
         </div>
-        <p className="text-base font-semibold text-neutral-900">{formatCurrency(entry.amount)}</p>
+        <p className="shrink-0 text-base font-semibold text-neutral-900">{formatCurrency(entry.amount)}</p>
       </button>
       <div className="mt-3">
         <ItemActions itemLabel={label} onEdit={onEdit} onDelete={onDelete} />

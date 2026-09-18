@@ -826,15 +826,33 @@ daher werden sie bewusst nicht entfernt.
 
 ### Sync
 
-Abstraktion über `SyncService` mit `sync()`, `pushChanges()`,
-`pullChanges()`, `resolveConflict()`. V1 nutzt einen Mock/lokalen Sync.
-Konfliktstrategie: **Last Write Wins** anhand von `updatedAt`. Die
-`syncQueue`-Infrastruktur (Store, `SyncQueueItem`, `enqueueSyncChange()`,
-`getPendingSyncChanges()`, `removeSyncChange()`) existiert bereits
-vorbereitend, ist seit Phase 10 aber nicht mehr an `save()`/`delete()`
-angeschlossen – die Population bleibt deaktiviert, bis ein echter
-`SyncService` als Consumer existiert. Keine Fake-Synchronisierung: solange
-kein Consumer existiert, wird auch keine Warteschlange dafür gefüllt.
+**Aktueller Stand**: Es gibt in V1 **keine** implementierte Sync-
+Funktionalität. `src/services/sync/` enthält bislang ausschließlich eine
+`.gitkeep` – es existiert weder eine `SyncService`-Schnittstelle noch eine
+Mock-/lokale Implementierung noch `sync()`/`pushChanges()`/
+`pullChanges()`/`resolveConflict()`-Methoden irgendwo im Code. Frühere
+Fassungen dieses Abschnitts beschrieben bereits eine solche Abstraktion –
+das war zum jeweiligen Zeitpunkt nicht (mehr) der tatsächliche
+Implementierungsstand und wurde korrigiert.
+
+**Bereits vorhandene Vorbereitung**: Die eigentlichen Sync-Metadaten
+(`updatedAt`, `syncVersion`, `deletedAt`) werden von `withSyncMetadata()`
+bei jedem Schreibzugriff gepflegt (siehe „Soft-Delete"-Verhalten in
+`database/repository.ts`). Die `syncQueue`-Infrastruktur (Store,
+`SyncQueueItem`, `enqueueSyncChange()`, `getPendingSyncChanges()`,
+`removeSyncChange()` in `domain/repositories/syncQueue.ts`) existiert
+ebenfalls bereits, ist aber seit Phase 10 nicht mehr an `save()`/
+`delete()` angeschlossen und hat aktuell keinerlei Aufrufer – die
+Warteschlange bleibt dauerhaft leer, bis ein echter Consumer existiert.
+
+**Künftig geplant, ausdrücklich nicht Teil von V1**: eine
+`SyncService`-Abstraktion mit `sync()`/`pushChanges()`/`pullChanges()`/
+`resolveConflict()`, zunächst mit einer Mock-/lokalen Implementierung,
+später mit einem echten Backend. Konfliktstrategie: **Last Write Wins**
+anhand von `updatedAt` (bereits als künftige Strategie festgelegt, aber
+noch nicht implementiert). Keine Fake-Synchronisierung: solange kein
+`SyncService`-Consumer existiert, wird auch keine Warteschlange dafür
+gefüllt und keine Mock-Implementierung vorgetäuscht.
 
 ## PWA-Regeln
 

@@ -29,9 +29,9 @@ function linkedEntityPath(linkedEntity: DocumentLinkedEntity): string | undefine
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs text-neutral-500">{label}</p>
-      <p className="text-sm font-medium text-neutral-900">{value}</p>
+      <p className="break-words text-sm font-medium text-neutral-900">{value}</p>
     </div>
   )
 }

@@ -319,7 +319,7 @@ describe('deleteDocumentIfUnreferenced', () => {
 })
 
 describe('deleteDocumentAndClearReferences', () => {
-  it('deletes the document and clears + resets the referencing Bill', async () => {
+  it('deletes the document and clears the referencing Bill', async () => {
     const document = await saveDocumentFile(makeFile('bill.pdf', 'application/pdf'), 'bill')
     const { bill } = await createBillWithItems(baseBillInput({ documentId: document.id }))
 
@@ -328,7 +328,6 @@ describe('deleteDocumentAndClearReferences', () => {
     expect((await getDocument(document.id))?.deletedAt).not.toBeNull()
     const reloadedBill = await getBill(bill.id)
     expect(reloadedBill?.documentId).toBeUndefined()
-    expect(reloadedBill?.ocrStatus).toBe('not_started')
   })
 
   it('deletes the document and clears the referencing Contract', async () => {
@@ -340,6 +339,16 @@ describe('deleteDocumentAndClearReferences', () => {
 
     expect((await getDocument(document.id))?.deletedAt).not.toBeNull()
     expect((await contractRepository.getById(contract.id))?.documentId).toBeUndefined()
+  })
+
+  it('deletes the document and clears the referencing WasteCost', async () => {
+    const document = await saveDocumentFile(makeFile('muellgebuehr.pdf', 'application/pdf'), 'waste')
+    const wasteCost = await createWasteCost(baseWasteCostInput({ documentId: document.id }))
+
+    await deleteDocumentAndClearReferences(document.id)
+
+    expect((await getDocument(document.id))?.deletedAt).not.toBeNull()
+    expect((await getWasteCost(wasteCost.id))?.documentId).toBeUndefined()
   })
 
   it('is safe to call for a document with no referencing entity', async () => {

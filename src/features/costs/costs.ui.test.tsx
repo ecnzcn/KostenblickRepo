@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/feedback/ToastProvider'
@@ -105,6 +105,118 @@ describe('CostsPage', () => {
 
     const entries = await listCostEntries()
     expect(entries[0]?.id).toBe(created.id)
+  })
+
+  it('finds an entry by its notes text', async () => {
+    await createCostEntry({
+      categoryId: 'heating',
+      amount: 100,
+      date: '2026-03-01T00:00:00.000Z',
+      notes: 'Sondertermin Schornsteinfeger',
+    })
+    await createCostEntry({
+      categoryId: 'water',
+      amount: 50,
+      date: '2026-04-01T00:00:00.000Z',
+      notes: 'Rohrbruch Reparatur',
+    })
+
+    renderCostsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Kosten durchsuchen'), { target: { value: 'Schornsteinfeger' } })
+
+    const itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts).toHaveLength(1)
+    expect(itemTexts[0]).toContain('Sondertermin Schornsteinfeger')
+  })
+
+  it('finds an entry by its category name', async () => {
+    await createCostEntry({ categoryId: 'heating', amount: 100, date: '2026-03-01T00:00:00.000Z' })
+    await createCostEntry({ categoryId: 'water', amount: 50, date: '2026-04-01T00:00:00.000Z' })
+
+    renderCostsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Kosten durchsuchen'), { target: { value: 'Wasser' } })
+
+    const itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts).toHaveLength(1)
+    expect(itemTexts[0]).toContain('Wasser')
+  })
+
+  it('shows a no-matches state for an unmatched search without changing the year total', async () => {
+    await createCostEntry({ categoryId: 'heating', amount: 100, date: '2026-03-01T00:00:00.000Z' })
+    await createCostEntry({ categoryId: 'water', amount: 50, date: '2026-04-01T00:00:00.000Z' })
+
+    renderCostsApp()
+    await waitForLoadingToFinish()
+
+    expect(screen.getAllByText('150,00 €').length).toBeGreaterThan(0)
+
+    fireEvent.change(screen.getByLabelText('Kosten durchsuchen'), { target: { value: 'does-not-exist' } })
+
+    expect(screen.getByText('Keine Kosten gefunden. Passe deine Suche an.')).toBeInTheDocument()
+    // The "Gesamt" total keeps reflecting the whole selected year, not the
+    // (empty) search result - searching only narrows the list below it.
+    expect(screen.getAllByText('150,00 €').length).toBeGreaterThan(0)
+  })
+
+  it('sorts entries by amount with a deterministic order, and restores the default date sort', async () => {
+    await createCostEntry({ categoryId: 'heating', amount: 300, date: '2026-03-01T00:00:00.000Z', notes: 'C' })
+    await createCostEntry({ categoryId: 'water', amount: 100, date: '2026-05-01T00:00:00.000Z', notes: 'A' })
+    await createCostEntry({ categoryId: 'electricity', amount: 200, date: '2026-04-01T00:00:00.000Z', notes: 'B' })
+
+    renderCostsApp()
+    await waitForLoadingToFinish()
+
+    // Default order: newest date first (unchanged from before this phase).
+    let itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts[0]).toContain('A')
+    expect(itemTexts[1]).toContain('B')
+    expect(itemTexts[2]).toContain('C')
+
+    fireEvent.change(screen.getByLabelText('Sortierung'), { target: { value: 'amount_asc' } })
+
+    itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts[0]).toContain('A') // 100 €
+    expect(itemTexts[1]).toContain('B') // 200 €
+    expect(itemTexts[2]).toContain('C') // 300 €
+  })
+
+  it('combines the year filter with search - a match in a different year stays hidden', async () => {
+    await createCostEntry({
+      categoryId: 'heating',
+      amount: 42,
+      date: '2025-03-01T00:00:00.000Z',
+      notes: 'Kaminkehrer',
+    })
+    await createCostEntry({ categoryId: 'water', amount: 20, date: '2026-04-01T00:00:00.000Z' })
+
+    renderCostsApp()
+    await waitForLoadingToFinish()
+
+    // Auto-selected year is 2026 (most recent with data) - the 2025 "Kaminkehrer"
+    // entry must not appear even though it would otherwise match the search.
+    fireEvent.change(screen.getByLabelText('Kosten durchsuchen'), { target: { value: 'Kaminkehrer' } })
+    expect(screen.getByText('Keine Kosten gefunden. Passe deine Suche an.')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '2025' } })
+    await waitFor(() => expect(screen.getByText('Gesamt 2025')).toBeInTheDocument())
+
+    const itemTexts = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(itemTexts).toHaveLength(1)
+    expect(itemTexts[0]).toContain('Kaminkehrer')
   })
 
   it('deletes an entry after confirmation', async () => {

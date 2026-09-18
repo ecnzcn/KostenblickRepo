@@ -111,7 +111,7 @@ export function WasteCostDetailPage() {
         {wasteCostDocument ? (
           <div className="rounded-2xl border border-neutral-200 bg-white p-5">
             <p className="mb-1 text-sm font-semibold text-neutral-900">Dokument</p>
-            <p className="mb-3 text-sm text-neutral-600">{wasteCostDocument.filename}</p>
+            <p className="mb-3 break-words text-sm text-neutral-600">{wasteCostDocument.filename}</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"

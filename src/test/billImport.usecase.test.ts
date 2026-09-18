@@ -9,7 +9,7 @@ beforeEach(async () => {
 })
 
 describe('createBillWithItems (OCR import path)', () => {
-  it('links the Document, marks ocrStatus verified, and carries per-item confidence/manuallyVerified through', async () => {
+  it('links the Document and carries per-item confidence/manuallyVerified through', async () => {
     const document = await saveDocumentFile(new File(['pdf'], 'abrechnung.pdf', { type: 'application/pdf' }), 'bill')
 
     const { bill, items } = await createBillWithItems({
@@ -24,7 +24,6 @@ describe('createBillWithItems (OCR import path)', () => {
     })
 
     expect(bill.documentId).toBe(document.id)
-    expect(bill.ocrStatus).toBe('verified')
 
     expect(items).toHaveLength(2)
     expect(items[0]?.confidence).toBe(0.85)
@@ -43,7 +42,6 @@ describe('createBillWithItems (OCR import path)', () => {
     })
 
     expect(bill.documentId).toBeUndefined()
-    expect(bill.ocrStatus).toBe('not_started')
     expect(items[0]?.confidence).toBe(1)
     expect(items[0]?.manuallyVerified).toBe(true)
   })
@@ -120,7 +118,6 @@ describe('removeBillDocument', () => {
     const updated = await removeBillDocument(bill)
 
     expect(updated.documentId).toBeUndefined()
-    expect(updated.ocrStatus).toBe('not_started')
 
     const reloadedBill = await getBill(bill.id)
     expect(reloadedBill?.id).toBe(bill.id)

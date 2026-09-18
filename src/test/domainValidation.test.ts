@@ -6,7 +6,7 @@ const base = { id: '1', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-
 
 const bill = (overrides: Partial<Bill> = {}): Bill => ({
   ...base, userId: 'u1', type: 'annual_statement', year: 2026, totalAmount: 1200,
-  advancePayments: 1000, balance: 200, balanceType: 'payment_due', ocrStatus: 'not_started', ...overrides,
+  advancePayments: 1000, balance: 200, balanceType: 'payment_due', ...overrides,
 })
 
 const item = (overrides: Partial<BillItem> = {}): BillItem => ({
