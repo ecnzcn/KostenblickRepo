@@ -6,7 +6,7 @@ import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { useToast } from '../../components/feedback/useToast'
 import { ACCEPTED_DOCUMENT_INPUT_ACCEPT } from '../../constants/files'
-import { billDetailPath, contractDetailPath, ROUTES } from '../../constants/navigation'
+import { billDetailPath, contractDetailPath, ROUTES, wasteDetailPath } from '../../constants/navigation'
 import { DOCUMENT_TYPE_LABELS, OCR_STATUS_LABELS } from '../../constants/documents'
 import type { Document } from '../../domain/models/entities'
 import {
@@ -23,6 +23,7 @@ import { formatDate, formatFileSize } from '../../utils/formatters'
 function linkedEntityPath(linkedEntity: DocumentLinkedEntity): string | undefined {
   if (linkedEntity.entityType === 'bill') return billDetailPath(linkedEntity.entityId)
   if (linkedEntity.entityType === 'contract') return contractDetailPath(linkedEntity.entityId)
+  if (linkedEntity.entityType === 'waste') return wasteDetailPath(linkedEntity.entityId)
   return undefined
 }
 

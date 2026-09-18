@@ -7,10 +7,10 @@ import { PageHeader } from '../../components/layout/PageHeader'
 import { DocumentViewer } from '../../components/documents/DocumentViewer'
 import { useToast } from '../../components/feedback/useToast'
 import { billEditPath, documentDetailPath, ROUTES } from '../../constants/navigation'
-import type { Bill, BillItem, Category, Document } from '../../domain/models/entities'
+import type { Bill, BillItem, Document } from '../../domain/models/entities'
 import { BILL_TYPE_LABELS, deleteBillWithItems, getBill, listBillItems, removeBillDocument } from '../../domain/usecases/bills'
 import { getDocument, getDocumentBlob } from '../../domain/usecases/documents'
-import { categoryRepository } from '../../domain/repositories/categories'
+import { useCategories } from '../../hooks/useCategories'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { ConfidenceBadge } from './import/components/ConfidenceBadge'
 
@@ -21,7 +21,7 @@ export function BillDetailPage() {
 
   const [bill, setBill] = useState<Bill | undefined>()
   const [items, setItems] = useState<BillItem[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
+  const { categories } = useCategories()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -33,8 +33,8 @@ export function BillDetailPage() {
   useEffect(() => {
     if (!id) return
     let cancelled = false
-    Promise.all([getBill(id), listBillItems(id), categoryRepository.getAll()])
-      .then(([foundBill, billItems, categoryList]) => {
+    Promise.all([getBill(id), listBillItems(id)])
+      .then(([foundBill, billItems]) => {
         if (cancelled) return
         if (!foundBill || foundBill.deletedAt) {
           setError(true)
@@ -42,7 +42,6 @@ export function BillDetailPage() {
         }
         setBill(foundBill)
         setItems(billItems)
-        setCategories(categoryList)
         if (foundBill.documentId) {
           getDocument(foundBill.documentId).then((doc) => {
             if (!cancelled) setBillDocument(doc)

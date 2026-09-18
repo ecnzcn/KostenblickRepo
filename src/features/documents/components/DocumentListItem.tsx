@@ -22,7 +22,7 @@ export function DocumentListItem({ entry, onOpen }: DocumentListItemProps) {
       <button type="button" onClick={onOpen} className="w-full text-left">
         <p className="flex items-center gap-2 text-sm font-medium text-neutral-900">
           <span aria-hidden="true">{TYPE_ICON[document.type] ?? '📎'}</span>
-          <span className="truncate">{document.filename}</span>
+          <span className="min-w-0 truncate">{document.filename}</span>
         </p>
         <p className="mt-1 text-xs text-neutral-500">
           {DOCUMENT_TYPE_LABELS[document.type]} · {formatFileSize(document.size)}

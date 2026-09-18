@@ -97,14 +97,28 @@ interface SelectFieldProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>,
 export function SelectField({ id, label, options, placeholder, optional, ...selectProps }: SelectFieldProps) {
   return (
     <FieldWrapper label={label} htmlFor={id} optional={optional}>
-      <select id={id} className={`${INPUT_CLASS} appearance-none`} {...selectProps}>
-        {placeholder ? <option value="">{placeholder}</option> : null}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <select id={id} className={`${INPUT_CLASS} appearance-none pr-9`} {...selectProps}>
+          {placeholder ? <option value="">{placeholder}</option> : null}
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-neutral-400"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </div>
     </FieldWrapper>
   )
 }

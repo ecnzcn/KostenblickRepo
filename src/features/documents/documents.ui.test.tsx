@@ -6,8 +6,10 @@ import { deleteDatabase } from '../../database/database'
 import { createBillWithItems } from '../../domain/usecases/bills'
 import { createContract } from '../../domain/usecases/contracts'
 import { saveDocumentFile } from '../../domain/usecases/documents'
+import { createWasteCost } from '../../domain/usecases/wasteCosts'
 import { BillDetailPage } from '../bills/BillDetailPage'
 import { ContractDetailPage } from '../contracts/ContractDetailPage'
+import { WasteCostDetailPage } from '../waste/WasteCostDetailPage'
 import { DocumentDetailPage } from './DocumentDetailPage'
 import { DocumentsPage } from './DocumentsPage'
 
@@ -24,6 +26,7 @@ function renderDocumentsApp(initialPath = '/dokumente') {
           <Route path="/dokumente/:id" element={<DocumentDetailPage />} />
           <Route path="/abrechnungen/:id" element={<BillDetailPage />} />
           <Route path="/vertraege/:id" element={<ContractDetailPage />} />
+          <Route path="/muell/:id" element={<WasteCostDetailPage />} />
         </Routes>
       </MemoryRouter>
     </ToastProvider>,
@@ -155,6 +158,24 @@ describe('DocumentDetailPage', () => {
     fireEvent.click(screen.getByRole('link', { name: 'EnBW' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'EnBW' })).toBeInTheDocument())
+  })
+
+  it('shows the linked WasteCost and navigates to it', async () => {
+    const document = await saveDocumentFile(new File(['a'], 'muellgebuehren.pdf', { type: 'application/pdf' }), 'other')
+    await createWasteCost({
+      year: 2025,
+      category: 'residual',
+      amount: 120,
+      documentId: document.id,
+    })
+
+    renderDocumentsApp(`/dokumente/${document.id}`)
+    await waitForLoadingToFinish()
+
+    const link = screen.getByRole('link', { name: 'Müllkosten 2025' })
+    fireEvent.click(link)
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Müllkosten 2025' })).toBeInTheDocument())
   })
 
   it('deletes the document after confirmation and returns to the list', async () => {

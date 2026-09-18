@@ -6,9 +6,9 @@ import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { useToast } from '../../components/feedback/useToast'
 import { costEditPath, ROUTES } from '../../constants/navigation'
-import type { Category, CostEntry } from '../../domain/models/entities'
+import type { CostEntry } from '../../domain/models/entities'
 import { deleteCostEntry, getCostEntry } from '../../domain/usecases/costs'
-import { categoryRepository } from '../../domain/repositories/categories'
+import { useCategories } from '../../hooks/useCategories'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
 export function CostDetailPage() {
@@ -17,22 +17,21 @@ export function CostDetailPage() {
   const { showToast } = useToast()
 
   const [entry, setEntry] = useState<CostEntry | undefined>()
-  const [category, setCategory] = useState<Category | undefined>()
+  const { categories } = useCategories()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
   useEffect(() => {
     if (!id) return
     let cancelled = false
-    Promise.all([getCostEntry(id), categoryRepository.getAll()])
-      .then(([foundEntry, categories]) => {
+    getCostEntry(id)
+      .then((foundEntry) => {
         if (cancelled) return
         if (!foundEntry || foundEntry.deletedAt) {
           setError(true)
           return
         }
         setEntry(foundEntry)
-        setCategory(categories.find((c) => c.id === foundEntry.categoryId))
       })
       .catch(() => {
         if (!cancelled) setError(true)
@@ -59,6 +58,7 @@ export function CostDetailPage() {
   if (loading) return <LoadingState />
   if (error || !entry) return <ErrorState message="Dieser Kosteneintrag wurde nicht gefunden." />
 
+  const category = categories.find((c) => c.id === entry.categoryId)
   const label = category ? `${category.icon} ${category.name}` : 'Sonstiges'
 
   return (

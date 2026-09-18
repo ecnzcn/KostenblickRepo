@@ -41,7 +41,7 @@ export function ImportSelectStep({ file, error, onSelect, onCancel, onContinue }
 
       {file ? (
         <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm">
-          <p className="font-medium text-neutral-900">{file.name}</p>
+          <p className="break-words font-medium text-neutral-900">{file.name}</p>
           <p className="text-neutral-500">
             {formatFileSize(file.size)} · {file.type || 'unbekannter Dateityp'}
           </p>
