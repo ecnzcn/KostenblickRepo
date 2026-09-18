@@ -3,6 +3,7 @@ import { ErrorState } from '../../components/ErrorState'
 import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { CostOverviewCategoryChart } from './components/CostOverviewCategoryChart'
+import { CostOverviewItemsList } from './components/CostOverviewItemsList'
 import { CostOverviewMonthlyChart } from './components/CostOverviewMonthlyChart'
 import { CostOverviewSummaryCard } from './components/CostOverviewSummaryCard'
 import { CostOverviewWarnings } from './components/CostOverviewWarnings'
@@ -39,6 +40,8 @@ export function CostOverviewPage() {
             <CostOverviewMonthlyChart monthly={data.monthly} summary={data.summary} />
             <CostOverviewCategoryChart categories={data.categories} />
           </div>
+
+          <CostOverviewItemsList items={data.items} year={data.year} />
         </div>
       )}
     </>

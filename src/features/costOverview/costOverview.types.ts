@@ -1,6 +1,7 @@
 export type {
   CentralCostCategoryBreakdown,
   CentralCostData,
+  CentralCostItem,
   CentralCostSource,
   CentralCostSourceBreakdown,
   CentralCostSummary,

@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HashRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CostOverviewPage } from './CostOverviewPage'
-import type { CentralCostData } from './costOverview.types'
-import { formatCurrency } from '../../utils/formatters'
+import type { CentralCostData, CentralCostItem } from './costOverview.types'
+import { formatCurrency, formatDate } from '../../utils/formatters'
 
 const { getCentralCostDataMock } = vi.hoisted(() => ({
   getCentralCostDataMock: vi.fn(),
@@ -51,6 +51,42 @@ const emptyData: CentralCostData = {
   warnings: [],
 }
 
+const billItem: CentralCostItem = {
+  id: 'bill:b1',
+  source: 'bill',
+  amount: 1000,
+  year: 2026,
+  periodStart: '2026-01-01T00:00:00.000Z',
+  periodEnd: '2026-12-31T00:00:00.000Z',
+  description: 'Jahresabrechnung 2026',
+  sourceEntityId: 'b1',
+  isEstimate: false,
+}
+
+const wasteItem: CentralCostItem = {
+  id: 'waste:w1',
+  source: 'waste',
+  amount: 100,
+  year: 2026,
+  categoryId: 'waste',
+  wasteCategory: 'residual',
+  description: 'Restmüll',
+  sourceEntityId: 'w1',
+  isEstimate: false,
+}
+
+const manualItem: CentralCostItem = {
+  id: 'manual:ce1',
+  source: 'manual',
+  amount: 40,
+  year: 2026,
+  date: '2026-09-15T00:00:00.000Z',
+  categoryId: 'water',
+  description: 'Wasser Nachzahlung',
+  sourceEntityId: 'ce1',
+  isEstimate: false,
+}
+
 const populatedData: CentralCostData = {
   year: 2026,
   years: [2025, 2026],
@@ -73,7 +109,7 @@ const populatedData: CentralCostData = {
       },
     ],
   },
-  items: [],
+  items: [billItem, wasteItem, manualItem],
   monthly: Array.from({ length: 12 }, (_, index) => ({
     month: `2026-${String(index + 1).padStart(2, '0')}`,
     amount: index === 5 ? 40 : 0,
@@ -118,7 +154,7 @@ describe('CostOverviewPage', () => {
     await waitForLoadingToFinish()
 
     expect(screen.getAllByText(money(1140)).length).toBeGreaterThan(0)
-    expect(screen.getByText(money(1000))).toBeInTheDocument()
+    expect(screen.getAllByText(money(1000)).length).toBeGreaterThan(0)
     expect(screen.getAllByText(money(100)).length).toBeGreaterThan(0)
     expect(screen.getAllByText(money(40)).length).toBeGreaterThan(0)
   })
@@ -172,5 +208,125 @@ describe('CostOverviewPage', () => {
     await waitForLoadingToFinish()
 
     expect(screen.getAllByText(money(1140)).length).toBeGreaterThan(0)
+  })
+})
+
+describe('CostOverviewItemsList (drill-down)', () => {
+  beforeEach(() => {
+    getCentralCostDataMock.mockReset()
+  })
+
+  it('lists each cost item with its source label, its available date and a link to the source entity', async () => {
+    getCentralCostDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Kostenpositionen')).toBeInTheDocument()
+
+    expect(screen.getByText('Jahresabrechnung 2026')).toBeInTheDocument()
+    expect(
+      screen.getByText(`Abrechnung · ${formatDate(billItem.periodStart!)} – ${formatDate(billItem.periodEnd!)}`),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Jahresabrechnung 2026').closest('a')?.getAttribute('href')).toContain(
+      `/abrechnungen/${billItem.sourceEntityId}`,
+    )
+
+    expect(screen.getByText('Restmüll')).toBeInTheDocument()
+    expect(screen.getByText('Müllkosten · 2026 · Kein Einzeldatum')).toBeInTheDocument()
+    expect(screen.getByText('Restmüll').closest('a')?.getAttribute('href')).toContain(
+      `/muell/${wasteItem.sourceEntityId}`,
+    )
+
+    expect(screen.getByText('Wasser Nachzahlung')).toBeInTheDocument()
+    expect(screen.getByText(`Manuell · ${formatDate(manualItem.date!)}`)).toBeInTheDocument()
+    expect(screen.getByText('Wasser Nachzahlung').closest('a')?.getAttribute('href')).toContain(
+      `/kosten/${manualItem.sourceEntityId}`,
+    )
+  })
+
+  it('never invents a date for a WasteCost or a Bill without a period - both show "Kein Einzeldatum"', async () => {
+    const billWithoutPeriod: CentralCostItem = {
+      id: 'bill:b2',
+      source: 'bill',
+      amount: 500,
+      year: 2026,
+      description: 'Sonderabrechnung 2026',
+      sourceEntityId: 'b2',
+      isEstimate: false,
+    }
+
+    getCentralCostDataMock.mockResolvedValue({ ...populatedData, items: [billWithoutPeriod, wasteItem] })
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getAllByText(/2026 · Kein Einzeldatum/).length).toBe(2)
+  })
+
+  it('sorts items with a real date most recently first, and undated items last', async () => {
+    const early: CentralCostItem = {
+      id: 'manual:early',
+      source: 'manual',
+      amount: 10,
+      year: 2026,
+      date: '2026-01-05T00:00:00.000Z',
+      description: 'Früher Manuell-Eintrag',
+      sourceEntityId: 'ce-early',
+      isEstimate: false,
+    }
+    const late: CentralCostItem = {
+      id: 'manual:late',
+      source: 'manual',
+      amount: 20,
+      year: 2026,
+      date: '2026-06-01T00:00:00.000Z',
+      description: 'Später Manuell-Eintrag',
+      sourceEntityId: 'ce-late',
+      isEstimate: false,
+    }
+    const middleBill: CentralCostItem = {
+      id: 'bill:middle',
+      source: 'bill',
+      amount: 30,
+      year: 2026,
+      periodEnd: '2026-03-01T00:00:00.000Z',
+      description: 'Zwischenabrechnung',
+      sourceEntityId: 'b-middle',
+      isEstimate: false,
+    }
+    const undated: CentralCostItem = {
+      id: 'waste:undated',
+      source: 'waste',
+      amount: 40,
+      year: 2026,
+      categoryId: 'waste',
+      wasteCategory: 'residual',
+      description: 'Undatierter Müll-Eintrag',
+      sourceEntityId: 'w-undated',
+      isEstimate: false,
+    }
+
+    getCentralCostDataMock.mockResolvedValue({ ...populatedData, items: [undated, early, late, middleBill] })
+    renderPage()
+    await waitForLoadingToFinish()
+
+    const order = screen.getAllByRole('link').map((link) => link.textContent ?? '')
+    const lateIndex = order.findIndex((text) => text.includes('Später Manuell-Eintrag'))
+    const middleIndex = order.findIndex((text) => text.includes('Zwischenabrechnung'))
+    const earlyIndex = order.findIndex((text) => text.includes('Früher Manuell-Eintrag'))
+    const undatedIndex = order.findIndex((text) => text.includes('Undatierter Müll-Eintrag'))
+
+    expect(lateIndex).toBeGreaterThanOrEqual(0)
+    expect(lateIndex).toBeLessThan(middleIndex)
+    expect(middleIndex).toBeLessThan(earlyIndex)
+    expect(earlyIndex).toBeLessThan(undatedIndex)
+  })
+
+  it('shows a dedicated empty state instead of an empty container when the year has no cost items', async () => {
+    getCentralCostDataMock.mockResolvedValue({ ...populatedData, items: [] })
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Kostenpositionen')).toBeInTheDocument()
+    expect(screen.getByText('Keine Kostenpositionen für 2026 vorhanden.')).toBeInTheDocument()
   })
 })

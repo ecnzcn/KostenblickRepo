@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { HashRouter } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { CostOverviewPage } from './CostOverviewPage'
+import { ToastProvider } from '../../components/feedback/ToastProvider'
 import { deleteDatabase } from '../../database/database'
 import {
   billItemRepository,
@@ -11,6 +12,9 @@ import {
 } from '../../domain/repositories/indexedDbRepositories'
 import type { Bill, BillItem, CostEntry, WasteCost } from '../../domain/models/entities'
 import { formatCurrency } from '../../utils/formatters'
+import { BillDetailPage } from '../bills/BillDetailPage'
+import { CostDetailPage } from '../costs/CostDetailPage'
+import { WasteCostDetailPage } from '../waste/WasteCostDetailPage'
 
 const syncBase = {
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -72,9 +76,16 @@ function money(amount: number): string {
 
 function renderPage() {
   return render(
-    <HashRouter>
-      <CostOverviewPage />
-    </HashRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<CostOverviewPage />} />
+          <Route path="/abrechnungen/:id" element={<BillDetailPage />} />
+          <Route path="/muell/:id" element={<WasteCostDetailPage />} />
+          <Route path="/kosten/:id" element={<CostDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   )
 }
 
@@ -101,7 +112,7 @@ describe('CostOverviewPage (integration: IndexedDB fixtures -> use case -> page)
     await waitFor(() => expect(screen.getAllByText(money(1140)).length).toBeGreaterThan(0))
     // 1000 (Bill.totalAmount) + 100 (WasteCost) + 40 (manual) = 1140, never
     // 1000 + 600 + 400 + 100 + 40 (which would double-count the BillItems).
-    expect(screen.getByText(money(1000))).toBeInTheDocument()
+    expect(screen.getAllByText(money(1000)).length).toBeGreaterThan(0)
   })
 
   it('surfaces a possible-duplicate warning when a waste-categorized BillItem and a WasteCost coexist for the same year, without removing either amount', async () => {
@@ -114,5 +125,52 @@ describe('CostOverviewPage (integration: IndexedDB fixtures -> use case -> page)
 
     await waitFor(() => expect(screen.getByText('⚠ Möglicher Überschneidungsfall')).toBeInTheDocument())
     expect(screen.getAllByText(money(1100)).length).toBeGreaterThan(0)
+  })
+
+  it('navigates from a Bill cost position to its real BillDetailPage', async () => {
+    const year = new Date().getFullYear()
+    await billRepository.save(bill({ id: 'b1', year, totalAmount: 1000 }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Jahresabrechnung ' + year)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('Jahresabrechnung ' + year))
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Jahresabrechnung ' + year })).toBeInTheDocument(),
+    )
+  })
+
+  it('navigates from a WasteCost cost position to its real WasteCostDetailPage', async () => {
+    const year = new Date().getFullYear()
+    await wasteCostRepository.save(wasteCost({ id: 'w1', year, amount: 100 }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Restmüll')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('Restmüll'))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Müllkosten ' + year })).toBeInTheDocument())
+  })
+
+  it('navigates from a manual cost position to its real CostDetailPage', async () => {
+    await costEntryRepository.save(costEntry({ id: 'ce1', categoryId: 'water', amount: 40, notes: 'Wasser Nachzahlung' }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Wasser Nachzahlung')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('Wasser Nachzahlung'))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '💧 Wasser' })).toBeInTheDocument())
+  })
+
+  it('never invents a date for a WasteCost or a Bill without a period', async () => {
+    const year = new Date().getFullYear()
+    await billRepository.save(bill({ id: 'b1', year, totalAmount: 500 }))
+    await wasteCostRepository.save(wasteCost({ id: 'w1', year, amount: 100 }))
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getAllByText(new RegExp(`${year} · Kein Einzeldatum`)).length).toBe(2))
   })
 })
