@@ -33,6 +33,15 @@ async function waitForLoadingToFinish() {
   await waitFor(() => expect(screen.queryByText('Daten werden geladen …')).not.toBeInTheDocument())
 }
 
+/** ISO date `daysFromNow` days from the real current time - keeps
+ * date-dependent fixtures (e.g. contract status) correct regardless of
+ * which day the suite actually runs on. */
+function isoDaysFromNow(daysFromNow: number): string {
+  const date = new Date()
+  date.setUTCDate(date.getUTCDate() + daysFromNow)
+  return date.toISOString()
+}
+
 describe('ContractsPage', () => {
   it('shows the empty state with a call to action when there is no data', async () => {
     renderContractsApp()
@@ -79,8 +88,8 @@ describe('ContractsPage', () => {
       provider: 'Telekom',
       monthlyCost: 40,
       startDate: '2024-01-01T00:00:00.000Z',
-      endDate: '2026-09-25T00:00:00.000Z',
-      cancellationPeriodValue: 5,
+      endDate: isoDaysFromNow(20),
+      cancellationPeriodValue: 10,
       cancellationPeriodUnit: 'days',
       autoRenewal: true,
       reminderEnabled: true,
