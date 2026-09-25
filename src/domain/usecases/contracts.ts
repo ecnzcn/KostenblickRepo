@@ -108,6 +108,61 @@ export async function listContracts(): Promise<Contract[]> {
   return contractRepository.getAll()
 }
 
+export interface RunningContractCosts {
+  /** Sum of monthlyCost across all currently active contracts. */
+  monthly: number
+  /** Sum of yearlyCost (or monthlyCost * 12 where yearlyCost is not set)
+   * across all currently active contracts. */
+  yearly: number
+}
+
+/** A contract counts as "currently active" (has an ongoing monthly/yearly
+ * cost right now) when it has already started and, if it has an end date
+ * at all, hasn't ended yet - date-only comparison against `referenceDate`,
+ * ignoring time-of-day/timezone the same way getUpcomingContractDeadlines
+ * does. A future contract (startDate in the future) is deliberately not
+ * counted - its cost isn't running yet. */
+export function isContractActive(contract: Contract, referenceDate: Date): boolean {
+  const today = Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate())
+  const start = new Date(contract.startDate).getTime()
+  if (start > today) return false
+  if (!contract.endDate) return true
+  return new Date(contract.endDate).getTime() >= today
+}
+
+/**
+ * Sums monthlyCost/yearlyCost across all currently active contracts -
+ * these are contractual/planned figures, never actually-incurred costs
+ * (see centralCosts.ts, "Contract is deliberately never read here"), so
+ * this is intentionally kept separate from and never merged into the
+ * actual-cost totals. Shared by the Dashboard and the Kostenübersicht so
+ * both show the exact same "laufende Vertragskosten" figure instead of
+ * two independently computed ones.
+ */
+export function calculateRunningContractCosts(contracts: Contract[], referenceDate: Date = new Date()): RunningContractCosts {
+  const active = contracts.filter((contract) => isContractActive(contract, referenceDate))
+  const monthly = roundToCents(active.reduce((sum, contract) => sum + contract.monthlyCost, 0))
+  const yearly = roundToCents(
+    active.reduce((sum, contract) => sum + (contract.yearlyCost ?? contract.monthlyCost * 12), 0),
+  )
+  return { monthly, yearly }
+}
+
+/** Re-reconciles every existing contract's cancellation reminders against
+ * the currently enabled reminder intervals (Settings). Toggling an
+ * interval on/off touches no individual contract, so without this the
+ * already-generated reminders for a just-disabled interval would linger
+ * until that contract happened to be created/edited again - reuses the
+ * same idempotent generateContractReminders() reconciliation every
+ * create/update already goes through, just applied to every contract. */
+export async function reconcileAllContractReminders(): Promise<void> {
+  const contracts = await listContracts()
+  const offsets = getEnabledReminderOffsets()
+  for (const contract of contracts) {
+    await generateContractReminders(contract, offsets)
+  }
+}
+
 /** Attaches an already-saved Document (see saveDocumentFile) to a
  * contract - kept separate from update Contract() since attaching a
  * document has nothing to do with the contract's own fields/validation and

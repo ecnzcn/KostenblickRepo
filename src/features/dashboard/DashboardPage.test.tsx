@@ -44,6 +44,7 @@ const emptyData: DashboardData = {
   upcomingContracts: [],
   documentsSummary: { total: 0, needsReview: 0 },
   wasteCostsSummary: { year: 2026, total: 0, byCategory: [] },
+  runningContractCosts: { monthly: 0, yearly: 0 },
   currentYearWarnings: [],
 }
 
@@ -86,6 +87,7 @@ const populatedData: DashboardData = {
     change: 12.2,
     changePercent: 7,
   },
+  runningContractCosts: { monthly: 287.4, yearly: 3448.8 },
   currentYearWarnings: [],
 }
 
@@ -195,6 +197,25 @@ describe('DashboardPage', () => {
     await waitForLoadingToFinish()
 
     expect(screen.getByText(/Noch keine Müllkosten für \d+ erfasst\./)).toBeInTheDocument()
+  })
+
+  it('shows the running contract costs, separate from the actual-cost cards', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Laufende Vertragskosten')).toBeInTheDocument()
+    expect(screen.getByText(`${money(287.4)} / Monat`)).toBeInTheDocument()
+    expect(screen.getByText(`${money(3448.8)} / Jahr`)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Verträge anzeigen' })).toHaveAttribute('href', '#/vertraege')
+  })
+
+  it('shows an empty state for running contract costs when there are no active contracts', async () => {
+    getDashboardDataMock.mockResolvedValue(emptyData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Keine aktiven Verträge mit laufenden Kosten.')).toBeInTheDocument()
   })
 
   it('links to the central cost overview and clarifies the waste card is already part of the totals above', async () => {

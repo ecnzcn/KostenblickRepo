@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { deleteDatabase } from '../database/database'
-import { createContract, deleteContract, updateContract, type ContractInput } from '../domain/usecases/contracts'
+import {
+  createContract,
+  deleteContract,
+  reconcileAllContractReminders,
+  updateContract,
+  type ContractInput,
+} from '../domain/usecases/contracts'
 import {
   generateContractReminders,
   removeContractReminders,
 } from '../domain/usecases/reminders/generateContractReminders'
 import { dismissReminder, getRemindersOverview, listRemindersForContract } from '../domain/usecases/reminders/reminderQueries'
+import { getReminderIntervalSettings, saveReminderIntervalSettings } from '../domain/usecases/reminders/reminderSettings'
 import { reminderRepository } from '../domain/repositories/indexedDbRepositories'
 
 beforeEach(async () => {
@@ -178,6 +185,76 @@ describe('backward compatibility with pre-Phase-6 Reminder records', () => {
     // legacy record and must still converge to exactly 4 reminders.
     await generateContractReminders(contract, [90, 30, 7, 1])
     expect(await listRemindersForContract(contract.id)).toHaveLength(4)
+  })
+})
+
+describe('reconcileAllContractReminders', () => {
+  it('removes an existing 90-day reminder once the interval is disabled, keeping 30/7/1', async () => {
+    const contract = await createContract(baseInput())
+    const initial = (await listRemindersForContract(contract.id)).map((r) => r.offsetDays).sort((a, b) => (a ?? 0) - (b ?? 0))
+    expect(initial).toEqual([1, 7, 30, 90])
+
+    saveReminderIntervalSettings({ ...getReminderIntervalSettings(), 90: false })
+    await reconcileAllContractReminders()
+
+    const remaining = await listRemindersForContract(contract.id)
+    expect(remaining.map((r) => r.offsetDays).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([1, 7, 30])
+  })
+
+  it('re-creates the 90-day reminder once the interval is re-enabled, without duplicating the others', async () => {
+    const contract = await createContract(baseInput())
+    saveReminderIntervalSettings({ ...getReminderIntervalSettings(), 90: false })
+    await reconcileAllContractReminders()
+    expect(await listRemindersForContract(contract.id)).toHaveLength(3)
+
+    saveReminderIntervalSettings({ ...getReminderIntervalSettings(), 90: true })
+    await reconcileAllContractReminders()
+
+    const reminders = await listRemindersForContract(contract.id)
+    expect(reminders.map((r) => r.offsetDays).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([1, 7, 30, 90])
+  })
+
+  it('is idempotent - reconciling repeatedly with the same settings never duplicates reminders', async () => {
+    const contract = await createContract(baseInput())
+    saveReminderIntervalSettings({ ...getReminderIntervalSettings(), 90: false })
+    await reconcileAllContractReminders()
+    await reconcileAllContractReminders()
+    await reconcileAllContractReminders()
+    expect(await listRemindersForContract(contract.id)).toHaveLength(3)
+  })
+
+  it('reconciles every contract, not just one', async () => {
+    const first = await createContract(baseInput({ provider: 'A GmbH' }))
+    const second = await createContract(baseInput({ provider: 'B GmbH' }))
+
+    saveReminderIntervalSettings({ ...getReminderIntervalSettings(), 90: false })
+    await reconcileAllContractReminders()
+
+    expect((await listRemindersForContract(first.id)).some((r) => r.offsetDays === 90)).toBe(false)
+    expect((await listRemindersForContract(second.id)).some((r) => r.offsetDays === 90)).toBe(false)
+    expect(await listRemindersForContract(first.id)).toHaveLength(3)
+    expect(await listRemindersForContract(second.id)).toHaveLength(3)
+  })
+
+  it('does not add cancellation reminders to a contract without a valid cancellation date', async () => {
+    const contract = await createContract(
+      baseInput({ endDate: undefined, cancellationPeriodValue: undefined, cancellationPeriodUnit: undefined }),
+    )
+    saveReminderIntervalSettings({ ...getReminderIntervalSettings(), 90: false })
+    await reconcileAllContractReminders()
+    expect(await listRemindersForContract(contract.id)).toHaveLength(0)
+  })
+
+  it('never touches an already-dismissed reminder when reconciling', async () => {
+    const contract = await createContract(baseInput())
+    const [first] = await listRemindersForContract(contract.id)
+    await dismissReminder(first!.id)
+
+    saveReminderIntervalSettings({ ...getReminderIntervalSettings(), [first!.offsetDays!]: false })
+    await reconcileAllContractReminders()
+
+    const reloaded = await reminderRepository.getById(first!.id)
+    expect(reloaded?.status).toBe('dismissed')
   })
 })
 

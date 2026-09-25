@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useToast } from '../../components/feedback/useToast'
-import { FormActions, FormError, MoneyField, SelectField, TextAreaField, TextField } from '../../components/form/fields'
+import { FormActions, FormError, MoneyField, SelectField, TextAreaField } from '../../components/form/fields'
 import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { ACCEPTED_DOCUMENT_INPUT_ACCEPT } from '../../constants/files'
@@ -25,6 +25,23 @@ interface WasteCostFormPageProps {
 
 function currentYear(): number {
   return new Date().getUTCFullYear()
+}
+
+const YEARS_BEFORE = 5
+const YEARS_AFTER = 5
+
+/** A bounded selection of years around today, always including the current
+ * year and - when editing an older/future entry - the entry's own year, so
+ * it stays correctly preselected instead of silently falling out of the
+ * dropdown. */
+function buildYearOptions(existingYear?: number): { value: string; label: string }[] {
+  const base = currentYear()
+  const years = new Set<number>()
+  for (let year = base - YEARS_BEFORE; year <= base + YEARS_AFTER; year += 1) years.add(year)
+  if (existingYear !== undefined) years.add(existingYear)
+  return [...years]
+    .sort((a, b) => b - a)
+    .map((year) => ({ value: year.toString(), label: year.toString() }))
 }
 
 export function WasteCostFormPage({ mode }: WasteCostFormPageProps) {
@@ -194,10 +211,10 @@ export function WasteCostFormPage({ mode }: WasteCostFormPageProps) {
       <PageHeader title={mode === 'edit' ? 'Müllkosten bearbeiten' : 'Müllkosten erfassen'} />
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
         <FormError errors={errors} />
-        <TextField
+        <SelectField
           id="waste-year"
           label="Jahr"
-          type="number"
+          options={buildYearOptions(Number(yearText) || undefined)}
           value={yearText}
           onChange={(event) => setYearText(event.target.value)}
           required

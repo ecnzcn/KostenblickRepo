@@ -5,13 +5,21 @@ import { CostOverviewPage } from './CostOverviewPage'
 import type { CentralCostData, CentralCostItem } from './costOverview.types'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 
-const { getCentralCostDataMock } = vi.hoisted(() => ({
+const { getCentralCostDataMock, listContractsMock } = vi.hoisted(() => ({
   getCentralCostDataMock: vi.fn(),
+  listContractsMock: vi.fn(),
 }))
 
 vi.mock('../../domain/usecases/centralCosts', () => ({
   getCentralCostData: getCentralCostDataMock,
 }))
+
+vi.mock('../../domain/usecases/contracts', async () => {
+  const actual = await vi.importActual<typeof import('../../domain/usecases/contracts')>(
+    '../../domain/usecases/contracts',
+  )
+  return { ...actual, listContracts: listContractsMock }
+})
 
 function renderPage() {
   return render(
@@ -137,6 +145,8 @@ const populatedData: CentralCostData = {
 describe('CostOverviewPage', () => {
   beforeEach(() => {
     getCentralCostDataMock.mockReset()
+    listContractsMock.mockReset()
+    listContractsMock.mockResolvedValue([])
   })
 
   it('shows a loading indicator, then the empty state when there is no data', async () => {
@@ -185,6 +195,34 @@ describe('CostOverviewPage', () => {
     await waitForLoadingToFinish()
 
     expect(screen.getByText(/lassen sich keinem einzelnen Monat zuordnen/)).toBeInTheDocument()
+  })
+
+  it('shows running contract costs separately from the actual-cost total', async () => {
+    getCentralCostDataMock.mockResolvedValue(populatedData)
+    listContractsMock.mockResolvedValue([
+      {
+        id: 'c1',
+        createdAt: '',
+        updatedAt: '',
+        deletedAt: null,
+        syncVersion: 1,
+        userId: 'u1',
+        categoryId: 'internet',
+        provider: 'Telekom',
+        monthlyCost: 40,
+        startDate: '2020-01-01T00:00:00.000Z',
+        autoRenewal: true,
+        reminderEnabled: false,
+      },
+    ])
+    renderPage()
+    await waitForLoadingToFinish()
+
+    await waitFor(() => expect(screen.getByText('Laufende Vertragskosten')).toBeInTheDocument())
+    expect(screen.getByText(`${money(40)} / Monat`)).toBeInTheDocument()
+    expect(screen.getByText(`${money(480)} / Jahr`)).toBeInTheDocument()
+    // The Gesamtkosten total is unaffected by the contract's cost.
+    expect(screen.getAllByText(money(1140)).length).toBeGreaterThan(0)
   })
 
   it('re-fetches when a different year is selected', async () => {

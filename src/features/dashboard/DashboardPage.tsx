@@ -10,6 +10,7 @@ import { DocumentsSummaryCard } from './components/DocumentsSummaryCard'
 import { LatestBillCard } from './components/LatestBillCard'
 import { MonthlyCostCard } from './components/MonthlyCostCard'
 import { QuickActions } from './components/QuickActions'
+import { RunningContractCostsCard } from './components/RunningContractCostsCard'
 import { UpcomingContractsCard } from './components/UpcomingContractsCard'
 import { WasteCostsSummaryCard } from './components/WasteCostsSummaryCard'
 import { YearlyCostCard } from './components/YearlyCostCard'
@@ -65,6 +66,8 @@ export function DashboardPage() {
             <DocumentsSummaryCard summary={data.documentsSummary} />
             <WasteCostsSummaryCard summary={data.wasteCostsSummary} />
           </div>
+
+          <RunningContractCostsCard costs={data.runningContractCosts} />
 
           <QuickActions />
         </div>

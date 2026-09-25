@@ -191,6 +191,28 @@ describe('WasteCostFormPage (edit)', () => {
       expect(entries[0]?.amount).toBe(150)
     })
   })
+
+  it('correctly preselects an entry\'s year even when it lies outside the default dropdown range', async () => {
+    const oldYear = CURRENT_YEAR - 20
+    const created = await createWasteCost({ year: oldYear, category: 'residual', amount: 92 })
+
+    renderWasteApp(`/muell/${created.id}/bearbeiten`)
+    await waitForLoadingToFinish()
+
+    expect(screen.getByLabelText('Jahr')).toHaveValue(String(oldYear))
+  })
+})
+
+describe('WasteCostFormPage (year field)', () => {
+  it('offers the year as a select instead of a free-text number field, including the current year', async () => {
+    renderWasteApp('/muell/neu')
+
+    const yearField = screen.getByLabelText('Jahr')
+    expect(yearField.tagName).toBe('SELECT')
+    expect(yearField).toHaveValue(String(CURRENT_YEAR))
+    const optionValues = [...(yearField as HTMLSelectElement).options].map((option) => option.value)
+    expect(optionValues).toContain(String(CURRENT_YEAR))
+  })
 })
 
 describe('WasteCostDetailPage', () => {

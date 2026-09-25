@@ -10,6 +10,7 @@ import {
 } from '../repositories/indexedDbRepositories'
 import type { BalanceType, Bill, Category, Contract, CostEntry, Document } from '../models/entities'
 import { BILL_TYPE_LABELS } from './bills'
+import { calculateRunningContractCosts, type RunningContractCosts } from './contracts'
 import {
   buildCentralCostItems,
   type CostAggregationWarning,
@@ -75,6 +76,10 @@ export interface DashboardData {
   latestBill?: BillSummary
   documentsSummary: DocumentsSummary
   wasteCostsSummary: WasteCostYearSummary
+  /** Contractual monthly/yearly cost of currently active contracts - never
+   * added to currentMonthCost/currentYearCost (see calculateRunningContractCosts):
+   * these are planned/contractual figures, not money actually spent yet. */
+  runningContractCosts: RunningContractCosts
   /** Possible overlaps between WasteCost and waste-categorized Bill/
    * CostEntry amounts for the current year (see centralCosts.ts,
    * detectCostAggregationWarnings) - reused as-is, not reimplemented, so
@@ -283,5 +288,6 @@ export async function getDashboardData(referenceDate: Date = new Date()): Promis
     latestBill: getLatestBill(bills),
     documentsSummary: getDocumentsSummary(documents),
     wasteCostsSummary: getWasteCostSummary(wasteCosts, currentYear),
+    runningContractCosts: calculateRunningContractCosts(contracts, referenceDate),
   }
 }

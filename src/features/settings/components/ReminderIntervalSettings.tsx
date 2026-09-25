@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { CheckboxField } from '../../../components/form/fields'
+import { reconcileAllContractReminders } from '../../../domain/usecases/contracts'
 import { DEFAULT_REMINDER_OFFSET_DAYS } from '../../../domain/usecases/reminders/calculateReminderDates'
 import {
   getReminderIntervalSettings,
@@ -24,6 +25,10 @@ export function ReminderIntervalSettings() {
     const next = { ...settings, [offsetDays]: enabled }
     setSettings(next)
     saveReminderIntervalSettings(next)
+    // A settings-only change touches no individual contract, so existing
+    // reminders for a just-disabled interval (or a re-enabled one) need an
+    // explicit reconciliation pass here - see reconcileAllContractReminders.
+    void reconcileAllContractReminders()
   }
 
   return (

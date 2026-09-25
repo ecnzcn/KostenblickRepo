@@ -11,6 +11,7 @@ import {
   wasteCostRepository,
 } from '../../domain/repositories/indexedDbRepositories'
 import type { Bill, BillItem, CostEntry, WasteCost } from '../../domain/models/entities'
+import { createContract } from '../../domain/usecases/contracts'
 import { formatCurrency } from '../../utils/formatters'
 import { BillDetailPage } from '../bills/BillDetailPage'
 import { CostDetailPage } from '../costs/CostDetailPage'
@@ -187,5 +188,28 @@ describe('CostOverviewPage (integration: IndexedDB fixtures -> use case -> page)
     fireEvent.click(screen.getByRole('link', { name: /Zur Statistik/ }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Statistik' })).toBeInTheDocument())
+  })
+
+  it('shows running contract costs separately, without adding them to the actual-cost total', async () => {
+    const year = new Date().getFullYear()
+    await billRepository.save(bill({ id: 'b1', year, totalAmount: 1000 }))
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      monthlyCost: 40,
+      startDate: '2020-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: false,
+    })
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('Laufende Vertragskosten')).toBeInTheDocument())
+    expect(screen.getByText(`${money(40)} / Monat`)).toBeInTheDocument()
+    expect(screen.getByText(`${money(480)} / Jahr`)).toBeInTheDocument()
+    // The Gesamtkosten total stays 1000 (the Bill only) - the contract's
+    // 40€/Monat is never folded into it.
+    expect(screen.getAllByText(money(1000)).length).toBeGreaterThan(0)
+    expect(screen.queryByText(money(1040))).not.toBeInTheDocument()
   })
 })

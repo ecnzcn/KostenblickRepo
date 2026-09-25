@@ -1,11 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HashRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SettingsPage } from './SettingsPage'
+import { deleteDatabase } from '../../database/database'
+import { createContract } from '../../domain/usecases/contracts'
 import { getEnabledReminderOffsets } from '../../domain/usecases/reminders/reminderSettings'
+import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear()
+  await deleteDatabase()
 })
 
 function renderPage() {
@@ -55,6 +59,30 @@ describe('SettingsPage', () => {
 
     fireEvent.click(ninetyDays)
     expect(getEnabledReminderOffsets()).toEqual([30, 7, 1])
+  })
+
+  it('disabling an interval also removes it from an already-existing contract\'s reminders', async () => {
+    const contract = await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      monthlyCost: 40,
+      startDate: '2025-01-01T00:00:00.000Z',
+      endDate: '2026-12-31T00:00:00.000Z',
+      cancellationPeriodValue: 3,
+      cancellationPeriodUnit: 'months',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    expect((await listRemindersForContract(contract.id)).map((r) => r.offsetDays)).toContain(90)
+
+    renderPage()
+    fireEvent.click(screen.getByLabelText('90 Tage vorher'))
+
+    await waitFor(async () => {
+      const reminders = await listRemindersForContract(contract.id)
+      expect(reminders.map((r) => r.offsetDays)).not.toContain(90)
+    })
+    expect(await listRemindersForContract(contract.id)).toHaveLength(3)
   })
 
   it('shows the notification status - "Nicht unterstützt" in a test/jsdom environment without the Notification API', () => {

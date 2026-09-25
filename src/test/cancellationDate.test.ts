@@ -39,4 +39,37 @@ describe('calculateCancellationDate', () => {
       '2027-02-28T00:00:00.000Z',
     )
   })
+
+  it('lands on the last day of the target month when the end date is itself month-end (30.11. -> 31.10.)', () => {
+    expect(calculateCancellationDate('2026-11-30T00:00:00.000Z', 1, 'months')).toBe(
+      '2026-10-31T00:00:00.000Z',
+    )
+  })
+
+  it('lands on the last day of the target month when the end date is itself month-end (31.12. -> 30.11.)', () => {
+    expect(calculateCancellationDate('2026-12-31T00:00:00.000Z', 1, 'months')).toBe(
+      '2026-11-30T00:00:00.000Z',
+    )
+  })
+
+  it('lands on the last day of February for a month-end end date (31.03. -> 28.02., non-leap year)', () => {
+    expect(calculateCancellationDate('2027-03-31T00:00:00.000Z', 1, 'months')).toBe(
+      '2027-02-28T00:00:00.000Z',
+    )
+  })
+
+  it('lands on the last day of February for a month-end end date in a leap year (31.03. -> 29.02.)', () => {
+    expect(calculateCancellationDate('2028-03-31T00:00:00.000Z', 1, 'months')).toBe(
+      '2028-02-29T00:00:00.000Z',
+    )
+  })
+
+  it('keeps the same day-of-month for a date that is not month-end', () => {
+    expect(calculateCancellationDate('2026-11-15T00:00:00.000Z', 1, 'months')).toBe(
+      '2026-10-15T00:00:00.000Z',
+    )
+    expect(calculateCancellationDate('2026-11-20T00:00:00.000Z', 1, 'months')).toBe(
+      '2026-10-20T00:00:00.000Z',
+    )
+  })
 })

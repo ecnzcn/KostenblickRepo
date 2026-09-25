@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCentralCostData } from '../../../domain/usecases/centralCosts'
-import type { CentralCostData } from '../costOverview.types'
+import { calculateRunningContractCosts, listContracts } from '../../../domain/usecases/contracts'
+import type { CentralCostData, RunningContractCosts } from '../costOverview.types'
 
 interface UseCostOverviewDataResult {
   data: CentralCostData | undefined
+  /** Contractual monthly/yearly cost of currently active contracts -
+   * fetched separately from `data` since centralCosts.ts deliberately
+   * never reads contracts (see calculateRunningContractCosts); undefined
+   * only while still loading. */
+  runningContractCosts: RunningContractCosts | undefined
   loading: boolean
   error: Error | undefined
   year: number
@@ -17,10 +23,29 @@ interface UseCostOverviewDataResult {
 export function useCostOverviewData(): UseCostOverviewDataResult {
   const [year, setYearState] = useState(() => new Date().getFullYear())
   const [data, setData] = useState<CentralCostData>()
+  const [runningContractCosts, setRunningContractCosts] = useState<RunningContractCosts>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error>()
   const [reloadToken, setReloadToken] = useState(0)
   const hasAutoSelected = useRef(false)
+
+  // Independent of `year` - "currently active" is always relative to today,
+  // not the selected (possibly past) year being viewed - so this only
+  // re-runs on an explicit refetch(), not on every year switch.
+  useEffect(() => {
+    let cancelled = false
+    listContracts()
+      .then((contracts) => {
+        if (!cancelled) setRunningContractCosts(calculateRunningContractCosts(contracts))
+      })
+      .catch(() => {
+        // Non-critical secondary figure - a failure here must not block or
+        // error out the main cost overview, it just stays unset.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [reloadToken])
 
   useEffect(() => {
     let cancelled = false
@@ -61,5 +86,5 @@ export function useCostOverviewData(): UseCostOverviewDataResult {
     setReloadToken((token) => token + 1)
   }, [])
 
-  return { data, loading, error, year, setYear, refetch }
+  return { data, runningContractCosts, loading, error, year, setYear, refetch }
 }
