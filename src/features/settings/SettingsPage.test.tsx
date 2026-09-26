@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HashRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsPage } from './SettingsPage'
 import { deleteDatabase } from '../../database/database'
+import { billRepository } from '../../domain/repositories/indexedDbRepositories'
 import { createContract } from '../../domain/usecases/contracts'
 import { getEnabledReminderOffsets } from '../../domain/usecases/reminders/reminderSettings'
 import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
@@ -89,5 +90,31 @@ describe('SettingsPage', () => {
     renderPage()
     expect(screen.getByText(/Status: Nicht unterstützt/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Benachrichtigungen aktivieren' })).not.toBeInTheDocument()
+  })
+
+  it('shows a "Daten & Backup" section with an export action', () => {
+    renderPage()
+    expect(screen.getByText('Daten & Backup')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Backup exportieren' })).toBeInTheDocument()
+  })
+
+  it('exports a backup and shows a success confirmation', async () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Backup exportieren' }))
+
+    await waitFor(() => expect(screen.getByText('Backup wurde heruntergeladen.')).toBeInTheDocument())
+  })
+
+  it('shows an understandable error message, not a stack trace, when the export fails', async () => {
+    const failure = vi.spyOn(billRepository, 'getAllIncludingDeleted').mockRejectedValueOnce(new Error('boom'))
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Backup exportieren' }))
+
+    await waitFor(() => expect(screen.getByText('Backup fehlgeschlagen: boom')).toBeInTheDocument())
+    expect(screen.queryByText(/at Object\.|at async|\.ts:\d+/)).not.toBeInTheDocument()
+
+    failure.mockRestore()
   })
 })

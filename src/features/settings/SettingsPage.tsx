@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { ROUTES } from '../../constants/navigation'
+import { BackupSettings } from './components/BackupSettings'
 import { NotificationSettings } from './components/NotificationSettings'
 import { ReminderIntervalSettings } from './components/ReminderIntervalSettings'
 
@@ -39,6 +40,7 @@ export function SettingsPage() {
 
         <ReminderIntervalSettings />
         <NotificationSettings />
+        <BackupSettings />
       </div>
     </>
   )

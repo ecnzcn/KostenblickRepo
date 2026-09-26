@@ -67,6 +67,10 @@ Phasenplan):
 - Vorbereitete, aber noch **nicht aktive** Sync-Infrastruktur (Soft-Delete,
   `syncVersion`); eine echte Synchronisierung (Mock oder Cloud) ist noch
   nicht implementiert - siehe [`CLAUDE.md`](./CLAUDE.md), Abschnitt „Sync"
+- Lokaler Backup-Export („Mehr" → „Daten & Backup"): lädt alle
+  gespeicherten Daten inkl. Dokumente als eine JSON-Datei herunter. Ein
+  Wiederherstellen dieser Datei ist noch nicht möglich - das folgt in
+  einer späteren Phase.
 
 ## Tech Stack
 

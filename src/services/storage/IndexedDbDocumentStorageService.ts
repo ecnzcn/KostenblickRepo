@@ -1,5 +1,5 @@
 import { getDatabase } from '../../database/database'
-import { STORE_NAMES } from '../../database/schema'
+import { STORE_NAMES, type DocumentFileRecord } from '../../database/schema'
 import { generateId } from '../../utils/id'
 import type { DocumentStorageResult, DocumentStorageService } from './DocumentStorageService'
 
@@ -28,3 +28,13 @@ export class IndexedDbDocumentStorageService implements DocumentStorageService {
 }
 
 export const documentStorageService: DocumentStorageService = new IndexedDbDocumentStorageService()
+
+/** Every stored document file, raw blobs included - used only by the
+ * backup export (domain/usecases/backup.ts), which needs the full store
+ * contents rather than a single lookup by key. Not part of the
+ * DocumentStorageService interface itself, since no other caller needs a
+ * bulk read. */
+export async function getAllDocumentFiles(): Promise<DocumentFileRecord[]> {
+  const db = await getDatabase()
+  return db.getAll(STORE_NAMES.documentFiles)
+}

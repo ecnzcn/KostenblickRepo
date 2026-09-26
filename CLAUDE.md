@@ -825,6 +825,61 @@ Bedeutung ist unklar – möglicherweise für eine nie gebaute, zu `billId`
 symmetrische Verknüpfung/Dedup-Logik gegenüber `Contract` vorgesehen –,
 daher werden sie bewusst nicht entfernt.
 
+### Backup Export (Phase 12B, `domain/usecases/backup.ts`)
+
+Ein vollständiger, lokaler Backup-Export als eine herunterladbare JSON-Datei
+(„Mehr" → „Daten & Backup" → „Backup exportieren") – ausschließlich
+lesend, verändert/löscht/komprimiert nie etwas. **Restore/Import existiert
+noch nicht** (geplant für eine spätere Phase); diese Datei kann aktuell nur
+erzeugt, nicht wieder eingelesen werden.
+
+**Format**: `{ formatVersion, exportedAt, appVersion, databaseVersion,
+data: { … } }`. `formatVersion` (aktuell `1`) beschreibt ausschließlich die
+Struktur dieser Backup-Datei selbst und wird nur erhöht, wenn sich diese
+ändert – getrennt von `databaseVersion`, die unverändert aus dem
+bestehenden `DATABASE_VERSION` (`database/schema.ts`) übernommen wird,
+statt als eigene Zahl dupliziert zu werden. `appVersion` kommt direkt aus
+`package.json` (`src/constants/appVersion.ts`, JSON-Import statt
+manuell gepflegter String).
+
+**Enthaltene Daten**: jeder tatsächlich persistierte Store – `users`,
+`properties`, `bills`, `billItems`, `categories`, `costEntries`,
+`wasteCosts`, `contracts`, `reminders`, `documents`, `documentFiles`,
+`syncQueue`. `users`/`properties` sind seit V1 praktisch ungenutzt (siehe
+Phase 12A) und `syncQueue` ist mangels Consumer immer leer – beide werden
+trotzdem exportiert, für ein wirklich vollständiges Backup statt eines
+reinen UI-Exports. Für jede sync-fähige Entität wird bewusst
+`getAllIncludingDeleted()` verwendet: ein echtes Backup enthält auch
+soft-deleted Datensätze, nicht nur aktive. `Category` hat kein Soft-Delete-
+Konzept, `categoryRepository.getAll()` liefert hier bereits alles.
+
+**Dokumentdateien**: `documentFiles` (Store `{ id, blob }`, siehe
+`database/schema.ts`) wird verlustfrei als Base64 serialisiert
+(`utils/base64.ts`, `blobToBase64`/`base64ToBlob` – reine `btoa`/`atob`-
+Chunking-Funktionen, keine neue Abhängigkeit), zusammen mit dem
+`Blob.type` als `mimeType`. Dateiname/Größe/Checksum bleiben ausschließlich
+auf der `Document`-Entity selbst (keine Duplizierung). Der Export nimmt
+**keine** Verknüpfung zwischen `documents` und `documentFiles` an – ein
+`Document` ohne passenden `documentFiles`-Eintrag (Dateninkonsistenz) führt
+nicht zu einem Fehler, sondern taucht einfach ohne zugehörige Datei auf.
+
+**Architektur**: `UI (BackupSettings) → createBackup() (domain/usecases/
+backup.ts) → Repositories → IndexedDB`; `buildBackup()`/`validateBackup()`
+sind reine, ohne IndexedDB testbare Funktionen (gleiches Muster wie
+`buildCentralCostData`). `validateBackup()` prüft nur die Struktur des
+gerade erzeugten Exports (Format vorhanden, Arrays sind Arrays, …) – keine
+Restore-Validierung, die kommt mit der Restore-Phase.
+
+**Teststrategie**: `utils/base64.test.ts` (Base64-Rundreise, inkl. großer/
+binärer Inhalte – läuft unter Node statt jsdom, siehe unten),
+`test/backup.usecase.test.ts` (reine `buildBackup()`/`validateBackup()`-
+Fälle), `test/backup.integration.test.ts` (echtes IndexedDB inkl. Dokument-
+Blob-Rundreise, verwaistes Dokument ohne Datei, Soft-Delete – ebenfalls
+unter Node, aus demselben Grund wie `documentStorage.test.ts`: jsdoms
+Blob/File übersteht `fake-indexeddb`s `structuredClone`-Emulation nicht),
+`SettingsPage.test.tsx` (Export-Button, Erfolg, verständliche
+Fehlermeldung statt Stacktrace).
+
 ### Sync
 
 **Aktueller Stand**: Es gibt in V1 **keine** implementierte Sync-
