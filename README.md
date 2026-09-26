@@ -43,6 +43,10 @@ Phasenplan):
   Erinnerungen vor Kündigungsterminen (90/30/7/1 Tage, konfigurierbar) mit
   eigener Erinnerungsseite (`/erinnerungen`) und optionalen lokalen
   Benachrichtigungen
+- Vertragsübersicht mit Suche (Anbieter/Tarif/Kategorie), Filter nach
+  Status/Kategorie/Erinnerung sowie Sortierung (Kündigungsfrist, Anbieter,
+  monatliche Kosten, Vertragsbeginn) - kombinierbar, mit eigenem Button zum
+  Zurücksetzen aller Filter
 - Dashboard mit monatlichen/jährlichen Gesamtkosten und
   Kategorie-Auswertung
 - Statistik-Seite (`/statistik`): Gesamtkosten und Vorjahresvergleich pro

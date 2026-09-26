@@ -1,24 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Contract } from '../../../domain/models/entities'
 import { deleteContract, listContracts } from '../../../domain/usecases/contracts'
-import { daysUntil } from '../../../utils/date'
-
-function sortByUpcomingDeadline(contracts: Contract[]): Contract[] {
-  const now = new Date()
-  const daysRemaining = (contract: Contract): number | undefined =>
-    contract.calculatedCancellationDate ? daysUntil(contract.calculatedCancellationDate, now) : undefined
-
-  return [...contracts].sort((a, b) => {
-    const aDays = daysRemaining(a)
-    const bDays = daysRemaining(b)
-    const aRelevant = aDays !== undefined && aDays >= 0
-    const bRelevant = bDays !== undefined && bDays >= 0
-    if (aRelevant && bRelevant) return aDays - bDays
-    if (aRelevant) return -1
-    if (bRelevant) return 1
-    return a.provider.localeCompare(b.provider)
-  })
-}
+import { DEFAULT_CONTRACT_FILTERS, type ContractFilterOptions } from '../contractFilters'
 
 interface UseContractsResult {
   contracts: Contract[]
@@ -26,20 +9,28 @@ interface UseContractsResult {
   error: Error | undefined
   refetch: () => void
   remove: (id: string) => Promise<void>
+  filters: ContractFilterOptions
+  setFilters: (next: Partial<ContractFilterOptions>) => void
 }
 
+/** Loads every Contract exactly once - search/filter/sort are pure,
+ * in-memory derivations over this list (see contractFilters.ts), applied
+ * by the page component (same shape as useCosts()/useBills()) rather than
+ * memoized here, since the category lookup they need lives with
+ * useCategories() in the page. */
 export function useContracts(): UseContractsResult {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error>()
   const [reloadToken, setReloadToken] = useState(0)
+  const [filters, setFiltersState] = useState<ContractFilterOptions>(DEFAULT_CONTRACT_FILTERS)
 
   useEffect(() => {
     let cancelled = false
     listContracts()
       .then((result) => {
         if (cancelled) return
-        setContracts(sortByUpcomingDeadline(result))
+        setContracts(result)
         setError(undefined)
       })
       .catch((caught: unknown) => {
@@ -67,5 +58,9 @@ export function useContracts(): UseContractsResult {
     [refetch],
   )
 
-  return { contracts, loading, error, refetch, remove }
+  const setFilters = useCallback((next: Partial<ContractFilterOptions>) => {
+    setFiltersState((current) => ({ ...current, ...next }))
+  }, [])
+
+  return { contracts, loading, error, refetch, remove, filters, setFilters }
 }

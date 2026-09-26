@@ -500,6 +500,27 @@ Contract-Delete-Cleanup, IndexedDB-Integration, Altdaten-Kompatibilität),
 Fake-`NotificationService`), `RemindersPage.test.tsx`/
 `contracts.ui.test.tsx`/`SettingsPage.tsx`-Tests für die UI.
 
+**Suche, Filter & Sortierung (Phase 12D, `features/contracts/
+contractFilters.ts`)**: Übernimmt unverändert das bereits etablierte Muster
+von `billFilters.ts`/`documentFilters.ts`/`costFilters.ts` – eine reine
+`filterAndSort*()`-Funktion über die bereits geladene Liste, angewandt in
+der Page-Komponente (kein erneuter IndexedDB-Zugriff pro Tastendruck/
+Filterwechsel). Suche durchsucht `provider`/`tariff` sowie den Namen der
+verknüpften `Category` (analog `costFilters.ts`). Der Status-Filter
+(Aktiv/Nicht aktiv/Alle) nutzt ausschließlich die bereits bestehende
+`isContractActive()` (`domain/usecases/contracts.ts`) – keine zweite,
+lokale Definition von „aktiv". Die vormals in `useContracts.ts` inline
+berechnete Standard-Sortierung (`sortByUpcomingDeadline` – nächste
+Kündigungsfrist zuerst, sonst alphabetisch nach Anbieter) wurde unverändert
+nach `contractFilters.ts` verschoben und bleibt der Default (`sort:
+'upcoming_deadline'`), damit sich die Reihenfolge einer ungefilterten Liste
+durch diese Phase nicht ändert. Bewusst **kein** separater
+„Kündigungsdatum auf-/absteigend"-Sortierpunkt neben diesem Default, da
+beides zu verwechselbar nah beieinander läge. Ein „Filter zurücksetzen"-
+Button (bislang kein bestehendes Pattern dafür) setzt Suche/Status/
+Kategorie/Erinnerung/Sortierung gemeinsam auf die Defaults zurück und ist
+deaktiviert, solange ohnehin schon alles auf „Alle" steht.
+
 ### Dokumentenverwaltung (Phase 7, `domain/usecases/documents.ts`,
 `features/documents/`)
 

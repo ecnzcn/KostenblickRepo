@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/feedback/ToastProvider'
@@ -114,7 +114,9 @@ describe('ContractsPage', () => {
     renderContractsApp()
     await waitForLoadingToFinish()
 
-    expect(screen.getByText('Strom')).toBeInTheDocument()
+    // Scoped to the list itself - the new category filter (Phase 12D) adds
+    // its own "Strom" <option>, so an unscoped query would now match twice.
+    expect(within(screen.getByRole('list')).getByText('Strom')).toBeInTheDocument()
   })
 
   it('deletes a contract after confirmation', async () => {
@@ -134,6 +136,261 @@ describe('ContractsPage', () => {
 
     await waitFor(async () => expect(await listContracts()).toHaveLength(0))
     confirmSpy.mockRestore()
+  })
+
+  it('filters contracts by search text (provider, tariff, category)', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      tariff: 'MagentaZuhause XL',
+      monthlyCost: 40,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'electricity',
+      provider: 'EnBW',
+      monthlyCost: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Verträge durchsuchen'), { target: { value: 'magenta' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('Telekom')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Verträge durchsuchen'), { target: { value: 'strom' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('EnBW')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Verträge durchsuchen'), { target: { value: 'does-not-exist' } })
+    expect(screen.getByText('Keine Verträge gefunden. Passe deine Suche oder Filter an.')).toBeInTheDocument()
+  })
+
+  it('filters contracts by status (active/inactive), using the existing isContractActive() definition', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Aktiv GmbH',
+      monthlyCost: 10,
+      startDate: '2020-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Beendet AG',
+      monthlyCost: 10,
+      startDate: '2020-01-01T00:00:00.000Z',
+      endDate: '2021-01-01T00:00:00.000Z',
+      autoRenewal: false,
+      reminderEnabled: false,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'active' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('Aktiv GmbH')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'inactive' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('Beendet AG')).toBeInTheDocument()
+  })
+
+  it('filters contracts by category', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      monthlyCost: 40,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'electricity',
+      provider: 'EnBW',
+      monthlyCost: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Kategorie'), { target: { value: 'electricity' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('EnBW')).toBeInTheDocument()
+  })
+
+  it('filters contracts by reminder status', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Erinnert GmbH',
+      monthlyCost: 10,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Stumm AG',
+      monthlyCost: 10,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: false,
+      reminderEnabled: false,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Erinnerung'), { target: { value: 'disabled' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('Stumm AG')).toBeInTheDocument()
+  })
+
+  it('sorts contracts by monthly cost when a different sort option is chosen', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Teuer AG',
+      monthlyCost: 100,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Günstig GmbH',
+      monthlyCost: 10,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Sortierung'), { target: { value: 'monthly_cost_asc' } })
+
+    const providers = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(providers[0]).toContain('Günstig GmbH')
+    expect(providers[1]).toContain('Teuer AG')
+  })
+
+  it('combines search, filter and sort at once', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom Mobil',
+      monthlyCost: 30,
+      startDate: '2020-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom Festnetz',
+      monthlyCost: 15,
+      startDate: '2020-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom Kabel',
+      monthlyCost: 5,
+      startDate: '2020-01-01T00:00:00.000Z',
+      autoRenewal: false,
+      reminderEnabled: false,
+    })
+    await createContract({
+      categoryId: 'electricity',
+      provider: 'Telekom Energie',
+      monthlyCost: 1,
+      startDate: '2020-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByLabelText('Verträge durchsuchen'), { target: { value: 'telekom' } })
+    fireEvent.change(screen.getByLabelText('Kategorie'), { target: { value: 'internet' } })
+    fireEvent.change(screen.getByLabelText('Erinnerung'), { target: { value: 'enabled' } })
+    fireEvent.change(screen.getByLabelText('Sortierung'), { target: { value: 'monthly_cost_asc' } })
+
+    const providers = within(screen.getByRole('list'))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '')
+    expect(providers).toHaveLength(2)
+    expect(providers[0]).toContain('Telekom Festnetz')
+    expect(providers[1]).toContain('Telekom Mobil')
+  })
+
+  it('resets all filters and the search text back to "Alle" with one action', async () => {
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      monthlyCost: 40,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+    await createContract({
+      categoryId: 'electricity',
+      provider: 'EnBW',
+      monthlyCost: 60,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+
+    const resetButton = screen.getByRole('button', { name: 'Filter zurücksetzen' })
+    expect(resetButton).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Verträge durchsuchen'), { target: { value: 'telekom' } })
+    fireEvent.change(screen.getByLabelText('Kategorie'), { target: { value: 'internet' } })
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1)
+    expect(resetButton).not.toBeDisabled()
+
+    fireEvent.click(resetButton)
+
+    expect(screen.getByLabelText('Verträge durchsuchen')).toHaveValue('')
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(2)
+    expect(resetButton).toBeDisabled()
+  })
+
+  it('distinguishes "no contracts at all" from "no contracts match the current search/filters"', async () => {
+    const firstRender = renderContractsApp()
+    await waitForLoadingToFinish()
+    expect(screen.getByText('Noch keine Verträge vorhanden.')).toBeInTheDocument()
+    firstRender.unmount()
+
+    await createContract({
+      categoryId: 'internet',
+      provider: 'Telekom',
+      monthlyCost: 40,
+      startDate: '2025-01-01T00:00:00.000Z',
+      autoRenewal: true,
+      reminderEnabled: true,
+    })
+
+    renderContractsApp()
+    await waitForLoadingToFinish()
+    fireEvent.change(screen.getByLabelText('Verträge durchsuchen'), { target: { value: 'nichts-passt' } })
+    expect(screen.getByText('Keine Verträge gefunden. Passe deine Suche oder Filter an.')).toBeInTheDocument()
+    expect(screen.queryByText('Noch keine Verträge vorhanden.')).not.toBeInTheDocument()
   })
 })
 
