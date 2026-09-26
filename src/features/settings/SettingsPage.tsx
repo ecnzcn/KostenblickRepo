@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { APP_VERSION } from '../../constants/appVersion'
 import { ROUTES } from '../../constants/navigation'
 import { BackupSettings } from './components/BackupSettings'
 import { NotificationSettings } from './components/NotificationSettings'
@@ -41,6 +42,8 @@ export function SettingsPage() {
         <ReminderIntervalSettings />
         <NotificationSettings />
         <BackupSettings />
+
+        <p className="text-center text-xs text-neutral-400">Version {APP_VERSION}</p>
       </div>
     </>
   )

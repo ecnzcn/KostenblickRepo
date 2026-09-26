@@ -260,6 +260,12 @@ Installierbarkeit auf iOS funktionieren.
 Die App startet danach im Standalone-Modus (ohne Browser-UI) und nutzt den
 Service Worker für Offline-Zugriff auf bereits geladene Inhalte.
 
+Ist eine neue Version veröffentlicht, zeigt die App beim nächsten Öffnen
+einen Hinweis „Neue Version verfügbar" mit den Optionen „Jetzt
+aktualisieren" oder „Später" - ein Update wird nie ungefragt automatisch
+eingespielt. Die aktuell installierte App-Version ist unter „Mehr" am
+Seitenende sichtbar.
+
 ## Architekturübersicht
 
 Domain-Driven, mit klarer Trennung von UI und Geschäftslogik:

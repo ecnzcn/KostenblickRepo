@@ -14,7 +14,15 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' (not 'autoUpdate') + injectRegister: false - Phase 12E's
+      // update hint needs an explicit "Jetzt aktualisieren" confirmation
+      // from the user, not a silent, unannounced reload the moment a new
+      // service worker is installed. Registration itself is done exactly
+      // once, by usePwaUpdate() (via virtual:pwa-register/react) - the
+      // default auto-injected registration script is disabled here so the
+      // service worker is never registered twice.
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
         id: '.',

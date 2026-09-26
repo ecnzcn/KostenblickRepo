@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HashRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsPage } from './SettingsPage'
+import { APP_VERSION } from '../../constants/appVersion'
 import { deleteDatabase } from '../../database/database'
 import { DATABASE_VERSION } from '../../database/schema'
 import { billRepository, wasteCostRepository } from '../../domain/repositories/indexedDbRepositories'
@@ -301,5 +302,13 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(screen.getByText(/Wiederherstellung fehlgeschlagen/)).toBeInTheDocument())
     expect(screen.getByText(/nicht verändert/)).toBeInTheDocument()
     expect(screen.queryByText(/at Object\.|at async|\.ts:\d+/)).not.toBeInTheDocument()
+  })
+
+  it('shows the app version from the single APP_VERSION source, not a hardcoded string', () => {
+    renderPage()
+    expect(screen.getByText(`Version ${APP_VERSION}`)).toBeInTheDocument()
+    // Guards against a stale/duplicated version literal ever being hardcoded
+    // here instead of read from APP_VERSION.
+    expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
   })
 })

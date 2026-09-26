@@ -32,4 +32,9 @@ describe('App', () => {
       expect(within(nav).getByRole('link', { name: new RegExp(label) })).toBeInTheDocument()
     }
   })
+
+  it('shows no PWA update hint on a normal app start (no update pending)', () => {
+    renderApp()
+    expect(screen.queryByText('Neue Version verfügbar')).not.toBeInTheDocument()
+  })
 })

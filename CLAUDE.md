@@ -1037,6 +1037,26 @@ gefüllt und keine Mock-Implementierung vorgetäuscht.
   dass dauerhaft Internet verfügbar ist
 - lokale Änderungen werden für spätere Synchronisierung vorgemerkt
 
+**Update-Hinweis (Phase 12E)**: `registerType: 'prompt'` (nicht
+`'autoUpdate'`) + `injectRegister: false` in `vite.config.ts` – ein neuer
+Service Worker aktiviert sich nie unangekündigt selbst. `src/hooks/
+usePwaUpdate.ts` ist die **einzige** Stelle, die `virtual:pwa-register/
+react`s `useRegisterSW()` aufruft (registriert den Service Worker also
+genau einmal, siehe `App.tsx`); `src/components/PwaUpdateBanner.tsx` ist
+eine reine, prop-gesteuerte Komponente (kein Zugriff auf das virtuelle
+Modul), die den Hinweis „Neue Version verfügbar" mit „Jetzt
+aktualisieren"/„Später" zeigt – bewusst **nicht** über das bestehende
+Toast-System (`ToastProvider`), da ein Toast automatisch verschwindet und
+keine Aktionsbuttons trägt, dieser Hinweis aber bis zu einer Nutzerentscheidung
+sichtbar bleiben muss. „Später" setzt nur lokalen React-State zurück –
+keine Persistenz in IndexedDB/localStorage; bei einem erneuten Update
+erscheint der Hinweis wieder. Der eigentliche Reload nach „Jetzt
+aktualisieren" ist vite-plugin-pwas eigenes Standardverhalten
+(`updateServiceWorker()` sendet ein Skip-Waiting an den wartenden Service
+Worker; der Reload selbst passiert beim `controlling`-Event) – keine
+eigene Reload-Logik in der App. Betrifft nur die Auslieferung/den
+Update-Mechanismus der App selbst, nie IndexedDB-Daten.
+
 ## Sicherheitsregeln
 
 NIEMALS:
