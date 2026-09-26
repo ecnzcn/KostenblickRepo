@@ -5,7 +5,7 @@ zur Verwaltung von Nebenkostenabrechnungen, Verträgen, Müllkosten,
 Kündigungsfristen, Erinnerungen und Kostenstatistiken – offlinefähig und
 später cloud-synchronisierbar.
 
-> **Status:** Kosten-, Vertrags- und Abrechnungsverwaltung (inkl. Import von
+> **Status:** V1 (siehe [`RELEASE.md`](./RELEASE.md)). Kosten-, Vertrags- und Abrechnungsverwaltung (inkl. Import von
 > Abrechnungen per PDF/Foto mit OCR-Vorschlägen zur manuellen Prüfung), das
 > Dashboard, die Statistik-Seite (`/statistik`: Jahres- und
 > Mehrjahresvergleich, Kategorie-Aufschlüsselung, Top-Kostenpositionen,
@@ -61,7 +61,12 @@ Phasenplan):
   Doppelzählung statt stiller Verrechnung; Dashboard-Kostenkarten nutzen
   dieselbe Datenbasis
 - Offline-First mit IndexedDB als primärer Datenquelle
-- Sync-Abstraktion (V1: lokaler Mock, Last-Write-Wins-Konfliktstrategie)
+- Laufende Vertragskosten (`Contract.monthlyCost`/`yearlyCost` aktiver
+  Verträge) werden auf Dashboard und Kostenübersicht separat ausgewiesen -
+  nie in die tatsächlichen Kosten eingerechnet
+- Vorbereitete, aber noch **nicht aktive** Sync-Infrastruktur (Soft-Delete,
+  `syncVersion`); eine echte Synchronisierung (Mock oder Cloud) ist noch
+  nicht implementiert - siehe [`CLAUDE.md`](./CLAUDE.md), Abschnitt „Sync"
 
 ## Tech Stack
 

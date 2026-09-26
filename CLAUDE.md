@@ -687,8 +687,9 @@ BillItem-Summe addiert – dieselbe Regel wie in der Statistik, siehe oben),
 Kosten. `Contract.monthlyCost`/`yearlyCost` fließen **bewusst nicht** ein –
 das sind vertragliche/laufende Konditionen, keine tatsächlich angefallenen
 Kosten; `centralCosts.ts` importiert `contractRepository` an keiner Stelle.
-Eine zukünftige, separate „Laufende Verpflichtungen"-Ansicht für
-Vertragskosten ist ein eigenes, hier nicht umgesetztes Arbeitspaket.
+(Seit Phase 11E gibt es dafür eine separate, nie in diese Projektion
+eingerechnete Anzeige – siehe `calculateRunningContractCosts()` in
+`domain/usecases/contracts.ts`, auf Dashboard und `/kostenuebersicht`.)
 
 **Kernbausteine**: `buildCentralCostItems(bills, wasteCosts, costEntries)`
 bildet aus jeder `Bill` (bei `Bill.totalAmount`, nie ihren `BillItem`s),
