@@ -61,3 +61,69 @@ funktionalen Änderungen gegenüber dem oben genannten, geprüften Stand.
 
 Details zur Architektur, den Domain-Modellen und allen Business Rules
 stehen in [`CLAUDE.md`](./CLAUDE.md).
+
+## Kostenblick V1.1.0
+
+### Release-Stand
+
+    78da1bb4035fc5341ef4d9a0860a072c262cc738
+    feat: add pwa update hint and app version
+
+V1.1.0 baut direkt auf `v1.0.0` auf und enthält ausschließlich die Phasen
+12B–12E - keine weiteren funktionalen Änderungen.
+
+### Neu gegenüber V1.0.0
+
+**Backup / Restore** (Phasen 12B/12C, „Mehr" → „Daten & Backup")
+
+- vollständiger lokaler JSON-Backup-Export aller persistierten
+  IndexedDB-Stores, inkl. `documentFiles` (Base64), Soft-Deleted Daten und
+  Sync-Metadaten (`syncVersion`/`deletedAt`)
+- vollständiger lokaler Restore derselben Datei - explizite
+  Nutzerbestätigung nach Anzeige der Backup-Infos (Datum, Version, Anzahl
+  je Store) erforderlich; ohne Bestätigung wird nichts verändert
+- Restore ist ein **vollständiger Ersatz** aller Stores (kein Merge),
+  läuft atomar in einer einzigen IndexedDB-Transaktion (alles oder
+  nichts) und validiert Format-/Datenbankversion sowie offensichtliche
+  Referenzfehler vor jedem Schreibzugriff
+
+**Verträge** (`/vertraege`, Phase 12D)
+
+- Suche über Anbieter, Tarif und Kategorie
+- Filter nach Status (Aktiv/Nicht aktiv, basierend auf der bestehenden
+  `isContractActive()`), Kategorie und Erinnerung (aktiviert/deaktiviert)
+- Sortierung nach Kündigungsfrist (Standard, unverändert), Anbieter,
+  monatlichen Kosten oder Vertragsbeginn
+- Suche, Filter und Sortierung sind beliebig kombinierbar; „Filter
+  zurücksetzen" setzt alles auf „Alle" zurück
+
+**PWA** (Phase 12E)
+
+- kontrollierter Hinweis „Neue Version verfügbar" statt eines
+  unangekündigten automatischen Updates; „Jetzt aktualisieren" oder
+  „Später"
+- aktuell installierte App-Version sichtbar unter „Mehr" (aus derselben
+  zentralen `APP_VERSION`-Quelle wie der Backup-Export)
+
+### Technischer Zustand (V1.1.0)
+
+- Tests: 590/590 bestanden
+- TypeScript (`tsc -b`): keine Fehler
+- Lint (`oxlint`): keine Meldungen
+- Build (`npm run build`): erfolgreich
+- GitHub Pages: Deploy-Workflow läuft auf Push nach `main`
+
+### Bewusst NICHT Bestandteil von V1.1.0
+
+- Cloud Sync
+- Multi-Device-Synchronisierung
+- Authentifizierung
+- Backend
+- Account-System
+- Konfliktauflösung
+- automatische Synchronisierung
+- Multi-Property
+
+`syncQueue`/`syncVersion` bleiben weiterhin lediglich vorbereitende
+technische Elemente ohne aktiven Consumer (siehe „Sync"-Abschnitt in
+[`CLAUDE.md`](./CLAUDE.md)).
