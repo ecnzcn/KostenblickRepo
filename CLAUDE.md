@@ -829,9 +829,9 @@ daher werden sie bewusst nicht entfernt.
 
 Ein vollständiger, lokaler Backup-Export als eine herunterladbare JSON-Datei
 („Mehr" → „Daten & Backup" → „Backup exportieren") – ausschließlich
-lesend, verändert/löscht/komprimiert nie etwas. **Restore/Import existiert
-noch nicht** (geplant für eine spätere Phase); diese Datei kann aktuell nur
-erzeugt, nicht wieder eingelesen werden.
+lesend, verändert/löscht/komprimiert nie etwas. Das Wiederherstellen dieser
+Datei ist seit Phase 12C möglich – siehe „Backup-Wiederherstellung /
+Restore" weiter unten.
 
 **Format**: `{ formatVersion, exportedAt, appVersion, databaseVersion,
 data: { … } }`. `formatVersion` (aktuell `1`) beschreibt ausschließlich die
@@ -867,8 +867,10 @@ nicht zu einem Fehler, sondern taucht einfach ohne zugehörige Datei auf.
 backup.ts) → Repositories → IndexedDB`; `buildBackup()`/`validateBackup()`
 sind reine, ohne IndexedDB testbare Funktionen (gleiches Muster wie
 `buildCentralCostData`). `validateBackup()` prüft nur die Struktur des
-gerade erzeugten Exports (Format vorhanden, Arrays sind Arrays, …) – keine
-Restore-Validierung, die kommt mit der Restore-Phase.
+gerade erzeugten Exports (Format vorhanden, Arrays sind Arrays, …) – die
+weiterführende Kompatibilitäts- und Referenzprüfung einer zum Import
+vorgelegten Datei lebt bewusst separat in `domain/usecases/restore.ts`
+(siehe unten), nicht hier.
 
 **Teststrategie**: `utils/base64.test.ts` (Base64-Rundreise, inkl. großer/
 binärer Inhalte – läuft unter Node statt jsdom, siehe unten),
@@ -879,6 +881,100 @@ unter Node, aus demselben Grund wie `documentStorage.test.ts`: jsdoms
 Blob/File übersteht `fake-indexeddb`s `structuredClone`-Emulation nicht),
 `SettingsPage.test.tsx` (Export-Button, Erfolg, verständliche
 Fehlermeldung statt Stacktrace).
+
+### Backup-Wiederherstellung / Restore (Phase 12C, `domain/usecases/restore.ts`)
+
+Restore ist ausdrücklich ein **Human Gate**-Feature: Auswahl, Lesen und
+Prüfen einer Backup-Datei sind rein lesend (`evaluateBackupFile()` fasst
+IndexedDB an keiner Stelle an) – es wird nichts verändert, bevor der
+Nutzer die angezeigten Backup-Informationen gesehen und die
+Wiederherstellung ausdrücklich per Klick bestätigt hat. Eine Dateiauswahl
+allein bestätigt nie etwas.
+
+**Semantik**: vollständiger Ersatz, keine Zusammenführung. Jeder Store aus
+`RESTORE_STORE_NAMES` (alle zwölf aus dem Backup-Format) wird geleert und
+exakt aus `backup.data` neu befüllt – auch soft-deleted Datensätze bleiben
+mit ihrem ursprünglichen `deletedAt`/`syncVersion`/ihrer `id` erhalten
+(keine Bereinigung), und Kategorien werden ebenfalls vollständig ersetzt,
+nicht mit den beim Erststart geseedeten Standardkategorien zusammengeführt.
+`syncQueue` wird strukturell mit wiederhergestellt, aber nie ausgeführt
+oder angestoßen – dafür existiert ohnehin kein Consumer (siehe „Sync"
+unten). Restore ruft bewusst keine Use-Case-Funktionen wie `createContract`/
+`updateContract()` auf (die z. B. automatisch Reminder regenerieren würden),
+sondern schreibt direkt in die Stores – die im Backup enthaltenen Reminder
+sind exakt die, die nach dem Restore existieren, nicht neu berechnete.
+
+**Atomizität**: `performRestore()` öffnet eine einzige native IndexedDB-
+`readwrite`-Transaktion über alle zwölf Stores hinweg (`idb`s
+`db.transaction([...storeNames], 'readwrite')` unterstützt das direkt –
+das ist bereits mit der bestehenden Architektur möglich, keine
+Architekturänderung nötig). Jeder Store wird innerhalb dieser einen
+Transaktion erst geleert und dann befüllt; schlägt auch nur ein einzelner
+Schreibvorgang fehl, wird die gesamte Transaktion abgebrochen
+(`tx.abort()`, zusätzlich zum nativen Abbruch durch einen echten
+IndexedDB-Fehler) und **kein** Store wird verändert – die Datenbank bleibt
+exakt im Zustand von vor dem Restore-Versuch. `documentFiles` werden vor
+dem Öffnen der Transaktion synchron von Base64 zu `Blob` dekodiert, damit
+die Transaktion nie auf ein asynchrones `await` wartet, das sie vorzeitig
+automatisch committen lassen könnte.
+
+**Validierung (vier Stufen, in `restore.ts`)**: (1) kein gültiges JSON →
+Fehler; (2) gültiges JSON, aber keine Kostenblick-Backup-Struktur (bestehende
+`validateBackup()` aus `backup.ts`) → Fehler; (3) strukturell gültig, aber
+`formatVersion`/`databaseVersion` nicht mit dieser App-Version kompatibel
+(`checkBackupCompatibility()`, Vergleich gegen `BACKUP_FORMAT_VERSION`/
+`DATABASE_VERSION`, nie einen hartkodierten Duplikatwert) → Fehler mit dem
+Text „Dieses Backupformat wird von dieser Version von Kostenblick nicht
+unterstützt." bzw. einem analogen Datenbankversions-Hinweis; (4) strukturell
+und versionsseitig gültig, aber referenziell klar defekt
+(`validateBackupReferences()`: BillItem→Bill, Reminder→Contract,
+CostEntry→Bill, Bill/Contract/WasteCost→Document) → Fehler. Ein `Document`
+ohne passenden `documentFiles`-Eintrag wird bewusst **nicht** als Fehler
+gewertet – das ist ein bereits akzeptierter, in Phase 12B selbst getesteter
+Datenzustand, kein Zeichen für ein defektes Backup. Es findet **keine**
+automatische Formatmigration statt; eine andere `databaseVersion` wird
+abgelehnt, nie automatisch konvertiert. Dies ist bewusst keine vollständige
+Nachbildung der fachlichen Validierungsregeln der übrigen Domain (z. B.
+Kündigungsfristlogik) – nur offensichtliche strukturelle/referenzielle
+Plausibilität.
+
+**UI** (`BackupSettings.tsx`, gleicher „Daten & Backup"-Abschnitt wie der
+Export, keine neue Route/Navigation): Datei auswählen → Backup-Infos
+(Exportdatum, App-Version, Anzahl je Store) und eine deutliche Warnung
+anzeigen → explizit bestätigen oder abbrechen → erst dann `performRestore()`.
+„Abbrechen" ändert nachweislich nichts. Während des Restores ist der
+Bestätigen-Button ausgeblendet (kein gleichzeitiger zweiter Restore
+möglich); Erfolg/Fehler werden in verständlichem Deutsch angezeigt, nie als
+Stacktrace.
+
+**Refresh nach dem Restore**: bewusst kein neuer globaler State-Mechanismus.
+Jede Seite lädt ihre Daten bereits beim Mounten frisch aus IndexedDB (siehe
+z. B. `ContractDetailPage`, `DashboardPage`) – es gibt keinen
+seitenübergreifenden Cache, der nach einem Restore aktiv invalidiert werden
+müsste. Ein Navigieren zu einer anderen Seite oder ein Reload zeigt die
+wiederhergestellten Daten automatisch.
+
+**Teststrategie**: `test/restore.usecase.test.ts` (reine Funktionen:
+`getBackupSummary`, `checkBackupCompatibility` inkl. der beiden
+Ablehnungsfälle, `validateBackupReferences` inkl. der expliziten
+Gegenprobe „Document ohne documentFiles wird nicht abgelehnt",
+`evaluateBackupFile` für alle vier Stufen), `test/restore.integration.test.ts`
+(echtes IndexedDB unter Node – vollständiger Ersatz statt Merge,
+Soft-Delete-Erhalt, Contracts/Reminder ohne Neuberechnung, Dokument-Datei
+byte-exakt über `ArrayBuffer`-Vergleich, Kategorien-Ersatz, ein
+**Atomizitätstest**, der einen Datensatz ohne `id` einschleust – ein
+echter, nativer IndexedDB-Fehler statt eines gemockten – und prüft, dass
+alle vorherigen Daten in jedem betroffenen Store danach unverändert sind,
+sowie ein Export→Ändern→Restore-Rundreisentest), Erweiterungen in
+`SettingsPage.test.tsx` (Dateiauswahl, Info-Anzeige, Ablehnung bei
+ungültigem JSON/inkompatibler Version, Abbrechen ändert nichts, Bestätigen
+ersetzt die Daten, verständliche Fehlermeldung bei einem fehlschlagenden
+Restore).
+
+**Bekannte Einschränkungen**: es gibt keine Vorschau einzelner Datensätze
+vor dem Restore (nur Zähler pro Store) und keine Teilwiederherstellung
+(z. B. „nur Verträge") – beides wäre über den beauftragten Umfang
+hinausgegangen. Ein Restore ersetzt immer alle zwölf Stores gemeinsam.
 
 ### Sync
 

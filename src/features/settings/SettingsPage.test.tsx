@@ -3,10 +3,37 @@ import { HashRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsPage } from './SettingsPage'
 import { deleteDatabase } from '../../database/database'
-import { billRepository } from '../../domain/repositories/indexedDbRepositories'
+import { DATABASE_VERSION } from '../../database/schema'
+import { billRepository, wasteCostRepository } from '../../domain/repositories/indexedDbRepositories'
+import { buildBackup, type KostenblickBackupData } from '../../domain/usecases/backup'
 import { createContract } from '../../domain/usecases/contracts'
 import { getEnabledReminderOffsets } from '../../domain/usecases/reminders/reminderSettings'
 import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
+import { generateId } from '../../utils/id'
+
+const emptyBackupData: KostenblickBackupData = {
+  users: [],
+  properties: [],
+  bills: [],
+  billItems: [],
+  categories: [],
+  costEntries: [],
+  wasteCosts: [],
+  contracts: [],
+  reminders: [],
+  documents: [],
+  documentFiles: [],
+  syncQueue: [],
+}
+
+function getRestoreFileInput(): HTMLInputElement {
+  return screen.getByLabelText('Backup-Datei auswählen') as HTMLInputElement
+}
+
+function selectBackupFile(content: string) {
+  const file = new File([content], 'kostenblick-backup.json', { type: 'application/json' })
+  fireEvent.change(getRestoreFileInput(), { target: { files: [file] } })
+}
 
 beforeEach(async () => {
   localStorage.clear()
@@ -116,5 +143,163 @@ describe('SettingsPage', () => {
     expect(screen.queryByText(/at Object\.|at async|\.ts:\d+/)).not.toBeInTheDocument()
 
     failure.mockRestore()
+  })
+
+  it('shows a "Backup wiederherstellen" restore control', () => {
+    renderPage()
+    expect(screen.getByText('Backup wiederherstellen', { selector: 'h3' })).toBeInTheDocument()
+    expect(getRestoreFileInput()).toBeInTheDocument()
+  })
+
+  it('rejects a file that is not valid JSON, without touching any data', async () => {
+    const existing = await wasteCostRepository.save({
+      id: generateId(),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+      syncVersion: 1,
+      userId: 'local-user',
+      year: 2026,
+      category: 'residual',
+      amount: 10,
+    })
+
+    renderPage()
+    selectBackupFile('{ this is not json')
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('kein gültiges JSON'))
+    expect((await wasteCostRepository.getAllIncludingDeleted()).map((w) => w.id)).toEqual([existing.id])
+  })
+
+  it('rejects a backup with an incompatible databaseVersion, without touching any data', async () => {
+    renderPage()
+    const incompatible = { ...buildBackup(emptyBackupData), databaseVersion: DATABASE_VERSION + 1 }
+    selectBackupFile(JSON.stringify(incompatible))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Datenbankversion'))
+  })
+
+  it('shows the backup info and a strong warning after selecting a valid file - not confirming yet', async () => {
+    const existing = await wasteCostRepository.save({
+      id: generateId(),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+      syncVersion: 1,
+      userId: 'local-user',
+      year: 2026,
+      category: 'residual',
+      amount: 10,
+    })
+
+    renderPage()
+    const backup = buildBackup({
+      ...emptyBackupData,
+      wasteCosts: [
+        {
+          id: generateId(),
+          createdAt: '2026-02-01T00:00:00.000Z',
+          updatedAt: '2026-02-01T00:00:00.000Z',
+          deletedAt: null,
+          syncVersion: 1,
+          userId: 'local-user',
+          year: 2027,
+          category: 'organic',
+          amount: 55,
+        },
+      ],
+    })
+    selectBackupFile(JSON.stringify(backup))
+
+    await waitFor(() => expect(screen.getByText('Dieses Backup enthält:')).toBeInTheDocument())
+    expect(screen.getByText(/Backup wiederherstellen\?.*ersetzt/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Backup wiederherstellen' })).toBeInTheDocument()
+
+    // Selecting/inspecting a file must never itself change anything.
+    expect((await wasteCostRepository.getAllIncludingDeleted()).map((w) => w.id)).toEqual([existing.id])
+  })
+
+  it('cancelling the restore leaves existing data completely unchanged', async () => {
+    const existing = await wasteCostRepository.save({
+      id: generateId(),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+      syncVersion: 1,
+      userId: 'local-user',
+      year: 2026,
+      category: 'residual',
+      amount: 10,
+    })
+
+    renderPage()
+    selectBackupFile(JSON.stringify(buildBackup(emptyBackupData)))
+    await waitFor(() => expect(screen.getByText('Dieses Backup enthält:')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }))
+
+    expect(screen.queryByText('Dieses Backup enthält:')).not.toBeInTheDocument()
+    expect(getRestoreFileInput()).toBeInTheDocument()
+    expect((await wasteCostRepository.getAllIncludingDeleted()).map((w) => w.id)).toEqual([existing.id])
+  })
+
+  it('confirming replaces existing data with the backup and shows a success message', async () => {
+    await wasteCostRepository.save({
+      id: generateId(),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+      syncVersion: 1,
+      userId: 'local-user',
+      year: 2026,
+      category: 'residual',
+      amount: 10,
+    })
+
+    renderPage()
+    const restoredWasteId = generateId()
+    const backup = buildBackup({
+      ...emptyBackupData,
+      wasteCosts: [
+        {
+          id: restoredWasteId,
+          createdAt: '2026-02-01T00:00:00.000Z',
+          updatedAt: '2026-02-01T00:00:00.000Z',
+          deletedAt: null,
+          syncVersion: 1,
+          userId: 'local-user',
+          year: 2027,
+          category: 'organic',
+          amount: 55,
+        },
+      ],
+    })
+    selectBackupFile(JSON.stringify(backup))
+    await waitFor(() => expect(screen.getByText('Dieses Backup enthält:')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Backup wiederherstellen' }))
+
+    await waitFor(() => expect(screen.getByText('Backup wurde erfolgreich wiederhergestellt.')).toBeInTheDocument())
+    expect((await wasteCostRepository.getAllIncludingDeleted()).map((w) => w.id)).toEqual([restoredWasteId])
+  })
+
+  it('shows an understandable error, not a stack trace, when the restore itself fails', async () => {
+    renderPage()
+    const backup = buildBackup(emptyBackupData)
+    // A record with no `id` (the store's keyPath) makes real IndexedDB
+    // reject the write - a genuine restore failure to verify against.
+    const broken = {
+      ...backup,
+      data: { ...backup.data, wasteCosts: [{ year: 2026, category: 'residual', amount: 1 }] },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    selectBackupFile(JSON.stringify(broken))
+    await waitFor(() => expect(screen.getByText('Dieses Backup enthält:')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Backup wiederherstellen' }))
+
+    await waitFor(() => expect(screen.getByText(/Wiederherstellung fehlgeschlagen/)).toBeInTheDocument())
+    expect(screen.getByText(/nicht verändert/)).toBeInTheDocument()
+    expect(screen.queryByText(/at Object\.|at async|\.ts:\d+/)).not.toBeInTheDocument()
   })
 })
