@@ -1,8 +1,10 @@
-import type { IDBPDatabase, StoreNames } from 'idb'
-import type { KostenblickDB } from '../database/schema'
+import type { IDBPDatabase, IDBPTransaction, StoreNames } from 'idb'
+import { STORE_NAMES, type KostenblickDB } from '../database/schema'
 import type { SyncableEntity, PersistedEntity } from '../domain/models/entities'
 import type { Repository, SyncableRepository } from '../domain/repositories/interfaces'
 import { getDatabase } from '../database/database'
+import { buildSyncQueueItem } from '../domain/repositories/syncQueue'
+import { isSyncEntityType, type LocallySyncedEntity, type SyncEntityType } from '../services/sync/syncTypes'
 
 export function withTimestamps<T extends PersistedEntity>(entity: T, now = new Date().toISOString()): T {
   return { ...entity, createdAt: entity.createdAt || now, updatedAt: now }
@@ -46,21 +48,64 @@ export class IndexedDBRepository<T extends SyncableEntity, K extends StoreNames<
 
   async save(entity: T): Promise<T> {
     const db = await this.dbProvider()
-    const existing = (await db.get(this.storeName, entity.id)) as unknown as T | undefined
+    const tx = db.transaction(this.transactionStores(), 'readwrite')
+    const store = tx.objectStore(this.storeName)
+    const existing = (await store.get(entity.id as never)) as unknown as T | undefined
     const next = withSyncMetadata(entity)
     next.syncVersion = existing ? existing.syncVersion + 1 : Math.max(1, entity.syncVersion || 1)
-    await db.put(this.storeName, next as never)
+    preserveServerRev(next, entity, existing)
+    await store.put(next as never)
+    await this.enqueue(tx, entity.id, 'upsert')
+    await tx.done
     return next
   }
 
   async delete(id: string): Promise<void> {
     const db = await this.dbProvider()
-    const existing = (await db.get(this.storeName, id)) as unknown as T | undefined
-    if (!existing || existing.deletedAt !== null) return
+    const tx = db.transaction(this.transactionStores(), 'readwrite')
+    const store = tx.objectStore(this.storeName)
+    const existing = (await store.get(id as never)) as unknown as T | undefined
+    if (!existing || existing.deletedAt !== null) {
+      await tx.done
+      return
+    }
     const deleted = withSyncMetadata({ ...existing, deletedAt: new Date().toISOString() })
     deleted.syncVersion += 1
-    await db.put(this.storeName, deleted as never)
+    await store.put(deleted as never)
+    await this.enqueue(tx, id, 'delete')
+    await tx.done
   }
+
+  private tracksSync(): boolean {
+    return isSyncEntityType(this.storeName)
+  }
+
+  private transactionStores(): Array<StoreNames<KostenblickDB>> {
+    return this.tracksSync() ? [this.storeName, STORE_NAMES.syncQueue] : [this.storeName]
+  }
+
+  /** Marks the record as changed-and-not-yet-pushed in the same transaction
+   * as the write itself, so a record can never be saved without its marker
+   * (or vice versa). */
+  private async enqueue(
+    tx: IDBPTransaction<KostenblickDB, Array<StoreNames<KostenblickDB>>, 'readwrite'>,
+    id: string,
+    operation: 'upsert' | 'delete',
+  ): Promise<void> {
+    if (!this.tracksSync()) return
+    await tx.objectStore(STORE_NAMES.syncQueue).put(buildSyncQueueItem(this.storeName as SyncEntityType, id, operation))
+  }
+}
+
+/** `serverRev` is sync bookkeeping that callers (use cases rebuilding an
+ * entity from form input) don't carry along - keep the stored value unless
+ * the caller explicitly provides one. Never adds the key when there is
+ * nothing to keep, so never-synced records look exactly as before. */
+function preserveServerRev<T extends SyncableEntity>(next: T, incoming: T, existing: T | undefined): void {
+  const incomingRev = (incoming as LocallySyncedEntity).serverRev
+  const existingRev = (existing as LocallySyncedEntity | undefined)?.serverRev
+  const rev = incomingRev ?? existingRev
+  if (rev !== undefined) (next as LocallySyncedEntity).serverRev = rev
 }
 
 export class IndexedDBSimpleRepository<T extends PersistedEntity, K extends StoreNames<KostenblickDB>>

@@ -1,4 +1,4 @@
-import { DEFAULT_USER_ID } from '../../constants/user'
+import { getCurrentOwnerId } from '../../services/sync/syncSettings'
 import { ACCEPTED_DOCUMENT_MIME_TYPES, MAX_DOCUMENT_SIZE_BYTES } from '../../constants/files'
 import { documentStorageService } from '../../services/storage/IndexedDbDocumentStorageService'
 import { generateId } from '../../utils/id'
@@ -62,7 +62,7 @@ export async function saveDocumentFile(file: File, type: DocumentType): Promise<
       updatedAt: now,
       deletedAt: null,
       syncVersion: 1,
-      userId: DEFAULT_USER_ID,
+      userId: getCurrentOwnerId(),
       type,
       filename: storageResult.filename,
       mimeType: storageResult.mimeType,

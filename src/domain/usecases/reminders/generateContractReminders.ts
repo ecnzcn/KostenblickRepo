@@ -1,5 +1,4 @@
-import { DEFAULT_USER_ID } from '../../../constants/user'
-import { generateId } from '../../../utils/id'
+import { getCurrentOwnerId } from '../../../services/sync/syncSettings'
 import type { Contract, Reminder } from '../../models/entities'
 import { reminderRepository } from '../../repositories/indexedDbRepositories'
 import { calculateReminderDates, DEFAULT_REMINDER_OFFSET_DAYS, type ReminderDateEntry } from './calculateReminderDates'
@@ -25,6 +24,17 @@ import { listRemindersForContract } from './reminderQueries'
  *   wanted.
  * - A missing wanted offset gets a freshly created reminder.
  */
+/**
+ * Deterministic id for a generated cancellation reminder (Phase 13B): two
+ * synced devices that generate the reminder for the same contract, offset
+ * and date produce the *same* record instead of two duplicates. The date is
+ * part of the id so a dismissed reminder (kept as history) can never be
+ * overwritten by a newly generated one for a different date.
+ */
+export function cancellationReminderId(contractId: string, offsetDays: number, reminderDate: string): string {
+  return `reminder:${contractId}:${offsetDays}:${reminderDate.slice(0, 10)}`
+}
+
 export async function generateContractReminders(
   contract: Contract,
   offsets: readonly number[] = DEFAULT_REMINDER_OFFSET_DAYS,
@@ -47,6 +57,16 @@ async function reconcileReminders(contract: Contract, wanted: ReminderDateEntry[
 
   for (const reminder of existing) {
     if (reminder.type !== 'cancellation' || reminder.status === 'dismissed') {
+      // A dismissed reminder for a still-wanted offset *and* the same date
+      // already covers that offset - otherwise every later contract save
+      // would recreate it as a new pending reminder.
+      const dismissedMatch =
+        reminder.type === 'cancellation' && reminder.offsetDays !== undefined
+          ? wantedByOffset.get(reminder.offsetDays)
+          : undefined
+      if (dismissedMatch && dismissedMatch.reminderDate === reminder.reminderDate) {
+        satisfiedOffsets.add(dismissedMatch.offsetDays)
+      }
       result.push(reminder)
       continue
     }
@@ -70,12 +90,12 @@ async function reconcileReminders(contract: Contract, wanted: ReminderDateEntry[
     if (satisfiedOffsets.has(entry.offsetDays)) continue
     result.push(
       await reminderRepository.save({
-        id: generateId(),
+        id: cancellationReminderId(contract.id, entry.offsetDays, entry.reminderDate),
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
         syncVersion: 1,
-        userId: contract.userId ?? DEFAULT_USER_ID,
+        userId: contract.userId ?? getCurrentOwnerId(),
         contractId: contract.id,
         reminderDate: entry.reminderDate,
         type: 'cancellation',

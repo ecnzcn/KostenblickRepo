@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '../components/layout/AppLayout'
 import { ToastProvider } from '../components/feedback/ToastProvider'
 import { PwaUpdateBanner } from '../components/PwaUpdateBanner'
+import { SyncChangesBanner } from '../components/SyncChangesBanner'
 import { ROUTES } from '../constants/navigation'
 import { BillDetailPage } from '../features/bills/BillDetailPage'
 import { BillFormPage } from '../features/bills/BillFormPage'
@@ -25,16 +26,23 @@ import { WasteCostFormPage } from '../features/waste/WasteCostFormPage'
 import { WasteCostsPage } from '../features/waste/WasteCostsPage'
 import { useDueReminderNotifications } from '../hooks/useDueReminderNotifications'
 import { usePwaUpdate } from '../hooks/usePwaUpdate'
+import { useAutoSync } from '../hooks/useAutoSync'
 
 export function App() {
   useDueReminderNotifications()
   const { needRefresh, updateNow, dismiss } = usePwaUpdate()
+  const { hasRemoteChanges, applyRemoteChanges, dismissRemoteChanges, dataVersion } = useAutoSync()
 
   return (
     <ToastProvider>
       <PwaUpdateBanner needRefresh={needRefresh} onUpdate={updateNow} onDismiss={dismiss} />
+      <SyncChangesBanner
+        visible={hasRemoteChanges && !needRefresh}
+        onApply={applyRemoteChanges}
+        onDismiss={dismissRemoteChanges}
+      />
       <AppLayout>
-        <Routes>
+        <Routes key={dataVersion}>
           <Route path={ROUTES.home} element={<DashboardPage />} />
           <Route path={ROUTES.statistics} element={<StatisticsPage />} />
 
