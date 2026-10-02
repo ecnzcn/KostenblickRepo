@@ -23,6 +23,60 @@ export function isSyncEntityType(value: string): value is SyncEntityType {
   return (SYNC_ENTITY_TYPES as readonly string[]).includes(value)
 }
 
+/**
+ * Fields that must never be resolved by picking "whichever edit has the
+ * later clock" alone: on a real conflict (both devices changed the record
+ * since the common base revision) touching one of these, the server never
+ * silently keeps one side's value - it rejects the push and the client
+ * keeps its own version locally until a person resolves it (see
+ * `mergeConflict` in SyncEngine.ts and `sync_push` in
+ * supabase/migrations). Disjoint edits (different fields, including a
+ * protected one on just one side) still merge automatically - only an
+ * actual overlap on a listed field is held back. Mirrors the Kategorie-C
+ * classification from the architecture docs (Phase 13B.1/13C):
+ * money and the fields that feed the cancellation-deadline calculation.
+ */
+const PROTECTED_FIELDS: Partial<Record<SyncEntityType, readonly string[]>> = {
+  bills: ['totalAmount', 'advancePayments', 'balance'],
+  billItems: ['amount'],
+  costEntries: ['amount'],
+  wasteCosts: ['amount'],
+  contracts: ['monthlyCost', 'yearlyCost', 'startDate', 'endDate', 'cancellationPeriodValue', 'cancellationPeriodUnit'],
+}
+
+export function protectedFields(entityType: SyncEntityType): readonly string[] {
+  return PROTECTED_FIELDS[entityType] ?? []
+}
+
+/** Bookkeeping fields every local edit touches regardless of which business
+ * field actually changed (`syncVersion` is explicitly local-only per
+ * CLAUDE.md's sync notes, never a conflict signal). Excluded from
+ * `changedKeys` so two edits to different *content* fields are still seen
+ * as disjoint - otherwise `updatedAt` alone would make almost every real
+ * conflict look like an overlap. */
+const BOOKKEEPING_FIELDS = new Set(['updatedAt', 'createdAt', 'syncVersion'])
+
+/** Top-level content keys whose value differs between two JSON-shaped
+ * records (`undefined` on either side counts as different only if the
+ * other side has a real value - two absent/undefined keys are never
+ * "changed"). */
+export function changedKeys(a: Record<string, unknown>, b: Record<string, unknown>): Set<string> {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  const changed = new Set<string>()
+  for (const key of keys) {
+    if (BOOKKEEPING_FIELDS.has(key)) continue
+    if (!deepEqual(a[key], b[key])) changed.add(key)
+  }
+  return changed
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === undefined || a === null || b === undefined || b === null) return a == b
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 /** A syncable entity as stored locally: `serverRev` is the server revision
  * this device last saw for the record (absent = never synced). It is local
  * bookkeeping only and is stripped before a record is sent to the server. */

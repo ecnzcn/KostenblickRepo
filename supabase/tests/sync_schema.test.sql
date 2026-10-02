@@ -122,4 +122,76 @@ do $$ begin
 exception when insufficient_privilege then raise notice 'ok - anon hat keinen Zugriff';
 end $$;
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- Feld-Level-Konfliktauflösung (disjunkte Änderungen mergen, geschützte
+-- Felder nie per Uhrzeit, keine stille Wiederbelebung) - eigener Haushalt
+-- mit frischem Vertrag, damit die Baseline-Historie eindeutig ist.
+-- ---------------------------------------------------------------------------
+
+set role authenticated;
+select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
+insert into t select 'hh2', public.create_household('Merge-Test')::text;
+insert into t select 'm0', (public.sync_push((select v::uuid from t where k='hh2'),
+    '[{"entityType":"contracts","id":"m1","data":{"id":"m1","provider":"E.ON","monthlyCost":50,"updatedAt":"2026-10-01T09:00:00.000Z"},"updatedAt":"2026-10-01T09:00:00.000Z","baseRev":null}]')
+   -> 0 ->> 'rev');
+
+-- Disjunkte Änderungen (monthlyCost vs. provider) werden gemerged, kein Konflikt.
+select pg_temp.check(
+  (public.sync_push((select v::uuid from t where k='hh2'),
+    jsonb_build_array(jsonb_build_object('entityType','contracts','id','m1',
+      'data', jsonb_build_object('id','m1','provider','E.ON','monthlyCost',60,'updatedAt','2026-10-01T10:00:00.000Z'),
+      'updatedAt','2026-10-01T10:00:00.000Z','baseRev',(select v::bigint from t where k='m0'))))
+   -> 0 ->> 'status') = 'applied', 'disjunkte Änderung 1 (monthlyCost) wird übernommen');
+select pg_temp.check(
+  (public.sync_push((select v::uuid from t where k='hh2'),
+    jsonb_build_array(jsonb_build_object('entityType','contracts','id','m1',
+      'data', jsonb_build_object('id','m1','provider','Vattenfall','monthlyCost',50,'updatedAt','2026-10-01T10:05:00.000Z'),
+      'updatedAt','2026-10-01T10:05:00.000Z','baseRev',(select v::bigint from t where k='m0'))))
+   -> 0 ->> 'conflict') = 'false', 'disjunkte Änderung 2 (provider) wird ohne Konfliktflag gemerged');
+select pg_temp.check((select data ->> 'monthlyCost' from public.sync_records where id='m1') = '60', 'monthlyCost aus Änderung 1 blieb erhalten');
+select pg_temp.check((select data ->> 'provider' from public.sync_records where id='m1') = 'Vattenfall', 'provider aus Änderung 2 wurde übernommen');
+
+-- Überlapp auf einem geschützten Feld (monthlyCost): nie per Uhrzeit, auch
+-- wenn die zweite Änderung "neuer" ist.
+select pg_temp.check((select rev from public.sync_records where id='m1') is not null, 'Vorbereitung: aktuelle Revision bekannt');
+insert into t select 'm_protrev', (select rev::text from public.sync_records where id='m1');
+select pg_temp.check(
+  (public.sync_push((select v::uuid from t where k='hh2'),
+    jsonb_build_array(jsonb_build_object('entityType','contracts','id','m1',
+      'data', jsonb_build_object('id','m1','provider','Vattenfall','monthlyCost',70,'updatedAt','2026-10-01T10:10:00.000Z'),
+      'updatedAt','2026-10-01T10:10:00.000Z','baseRev',(select v::bigint from t where k='m_protrev'))))
+   -> 0 ->> 'status') = 'applied', 'Änderung A (monthlyCost 70) wird übernommen');
+select pg_temp.check(
+  (public.sync_push((select v::uuid from t where k='hh2'),
+    jsonb_build_array(jsonb_build_object('entityType','contracts','id','m1',
+      'data', jsonb_build_object('id','m1','provider','Vattenfall','monthlyCost',80,'updatedAt','2026-10-01T10:20:00.000Z'),
+      'updatedAt','2026-10-01T10:20:00.000Z','baseRev',(select v::bigint from t where k='m_protrev'))))
+   -> 0 ->> 'status') = 'rejected', 'Änderung B (monthlyCost 80, selbe Baseline, neuer) wird trotzdem abgelehnt - geschütztes Feld');
+select pg_temp.check((select data ->> 'monthlyCost' from public.sync_records where id='m1') = '70', 'Server behält Änderung A, überschreibt nicht stillschweigend mit B');
+
+-- Baseline nicht rekonstruierbar (erfundenes baseRev) -> ablehnen, nie raten.
+select pg_temp.check(
+  (public.sync_push((select v::uuid from t where k='hh2'),
+    jsonb_build_array(jsonb_build_object('entityType','contracts','id','m1',
+      'data', jsonb_build_object('id','m1','provider','Vattenfall','monthlyCost',999,'updatedAt','2026-10-01T10:30:00.000Z'),
+      'updatedAt','2026-10-01T10:30:00.000Z','baseRev', 999999)))
+   -> 0 ->> 'status') = 'rejected', 'nicht rekonstruierbare Baseline wird abgelehnt statt geraten');
+
+-- Anti-Resurrection: ein gelöschter Datensatz wird durch eine veraltete,
+-- konkurrierende Änderung nie wiederbelebt.
+select pg_temp.check(
+  (public.sync_push((select v::uuid from t where k='hh2'),
+    jsonb_build_array(jsonb_build_object('entityType','contracts','id','m1',
+      'data', jsonb_build_object('id','m1','provider','Vattenfall','monthlyCost',70,'deletedAt','2026-10-01T10:40:00.000Z','updatedAt','2026-10-01T10:40:00.000Z'),
+      'updatedAt','2026-10-01T10:40:00.000Z','baseRev',(select rev from public.sync_records where id='m1'))))
+   -> 0 ->> 'status') = 'applied', 'Löschung wird übernommen');
+select pg_temp.check(
+  (public.sync_push((select v::uuid from t where k='hh2'),
+    jsonb_build_array(jsonb_build_object('entityType','contracts','id','m1',
+      'data', jsonb_build_object('id','m1','provider','Phone-Version','monthlyCost',70,'updatedAt','2026-10-01T10:50:00.000Z'),
+      'updatedAt','2026-10-01T10:50:00.000Z','baseRev',(select v::bigint from t where k='m_protrev'))))
+   -> 0 ->> 'status') = 'rejected', 'veraltete Änderung belebt gelöschten Datensatz nicht wieder');
+select pg_temp.check((select data ->> 'deletedAt' from public.sync_records where id='m1') is not null, 'Datensatz bleibt gelöscht');
+
 select 'ALL SYNC SCHEMA TESTS PASSED' as result;

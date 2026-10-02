@@ -83,6 +83,11 @@ synchronisiert“ → **Anzeigen**.
   **Restore** wieder aktivieren.
 - Dokument-Dateien (PDFs, Fotos) werden noch nicht übertragen, nur ihre
   Angaben. Das kommt in Phase 13F.
-- Konflikte (beide ändern denselben Eintrag gleichzeitig) löst die App
-  automatisch: die neuere Änderung gewinnt, die andere Version steht im
-  Konfliktprotokoll unter **Synchronisierung**.
+- Konflikte (beide ändern denselben Eintrag gleichzeitig): Ändern beide
+  unterschiedliche Felder (z. B. eine Person den Betrag, die andere den
+  Anbieter), übernimmt die App automatisch beides – nichts geht verloren.
+  Ändern beide **denselben** Betrag/Kündigungs-Feld, entscheidet die App
+  das nie automatisch per Uhrzeit; die eigene Version bleibt erhalten und
+  steht im Konfliktprotokoll unter **Synchronisierung**, bis sie geprüft
+  wird. Nur bei unkritischen Feldern (z. B. einer Notiz) gewinnt die
+  neuere Änderung automatisch.

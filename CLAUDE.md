@@ -1034,11 +1034,34 @@ würden sie erneut markiert). Ein lokal markierter Datensatz wird beim Pull
 nie überschrieben.
 
 **Konflikte** (Server, SQL `sync_push`, identisch in `InMemorySyncServer`):
-Server-Revision = `baseRev` → übernehmen. Sonst gewinnt der neuere
-`updatedAt`; bei Gleichstand der Server. Die unterlegene Version landet im
-Konfliktprotokoll (`localStorage`, max. 50, in den Einstellungen sichtbar) –
-die Geräteuhr entscheidet also nur im echten Konfliktfall, nie über die
-Reihenfolge.
+Server-Revision = `baseRev` → übernehmen, kein Konflikt. Weicht die
+Server-Revision ab, wird gegen die in `sync_records_history` aufbewahrte
+Baseline (der Stand bei `baseRev`) gedifft, welche Felder jede Seite
+tatsächlich geändert hat:
+- **disjunkte Felder** (z. B. Gerät A ändert `monthlyCost`, Gerät B
+  `provider`) → beide Änderungen werden automatisch gemerged, kein
+  Konfliktflag – nichts geht verloren.
+- **Überlapp auf einem geschützten Feld** (`protected_fields`: Geldbeträge
+  und die Felder, die die Kündigungsfrist-Berechnung füttern – Kategorie C
+  aus den Architektur-Notizen) → wird **nie** per Uhrzeit entschieden,
+  sondern abgelehnt; die Serverversion bleibt unverändert, die eigene
+  (abgelehnte) Version bleibt lokal/im Konfliktprotokoll erhalten. Kein
+  Geldbetrag wird je stillschweigend durch eine "neuere" fremde Änderung
+  überschrieben.
+- **Überlapp auf unkritischen Feldern** → wie bisher: neuere `updatedAt`
+  gewinnt, bei Gleichstand der Server; die unterlegene Version landet im
+  Konfliktprotokoll (`localStorage`, max. 50, in den Einstellungen
+  sichtbar).
+- **Baseline nicht rekonstruierbar** (z. B. sehr alter/unplausibler
+  `baseRev`) oder der Server hält bereits einen Tombstone, während die
+  Änderung `deletedAt` zurücksetzen würde → ablehnen statt raten
+  (Kategorie-C-Fallback bzw. Anti-Resurrection) – ein gelöschter
+  Datensatz wird durch eine veraltete, konkurrierende Änderung nie wieder
+  aktiv.
+
+Die Geräteuhr entscheidet also nur noch über echte, unkritische
+Feld-Überlappungen, nie über Geldbeträge/Kündigungsfristen und nie über
+die Pull-Reihenfolge.
 
 **Reminder-IDs**: generierte Kündigungs-Reminder haben die deterministische
 ID `reminder:<contractId>:<offsetDays>:<YYYY-MM-DD>`, damit zwei Geräte

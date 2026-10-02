@@ -8,6 +8,13 @@
 -- JSON). Jede Änderung bekommt eine vom Server vergebene Revision (rev);
 -- Geräte holen alles mit rev > ihrem Cursor.
 --
+-- Konflikte: ein echter Konflikt (Server-Revision != baseRev) wird per
+-- Feld-Diff gegen die in sync_records_history aufbewahrte Baseline gelöst -
+-- disjunkte Feldänderungen werden automatisch gemerged, ein Überlapp auf
+-- einem geschützten Feld (protected_fields: Geldbeträge, Kündigungsfrist-
+-- Felder) wird nie allein per Uhrzeit entschieden, sondern abgelehnt. Siehe
+-- sync_push weiter unten.
+--
 -- Sicherheit: Row Level Security auf allen Tabellen. Clients dürfen nur
 -- LESEN, und nur Daten ihrer eigenen Haushalte. Jedes Schreiben läuft über
 -- die Funktionen unten (security definer), die Mitgliedschaft prüfen und
@@ -59,11 +66,74 @@ create table public.sync_records (
 
 create index sync_records_household_rev_idx on public.sync_records (household_id, rev);
 
+-- Jede Revision, die eine Zeile je hatte - Grundlage für die Konflikt-
+-- erkennung in sync_push (Baseline-Rekonstruktion: was sah das Gerät zuletzt,
+-- bevor es seine eigene Änderung machte?). Nie direkt vom Client gelesen.
+create table public.sync_records_history (
+  household_id uuid not null,
+  entity_type text not null,
+  id text not null,
+  rev bigint not null,
+  data jsonb not null,
+  updated_at timestamptz not null,
+  primary key (household_id, entity_type, id, rev)
+);
+
+alter table public.sync_records_history enable row level security;
+-- Absichtlich keine Policy -> kein direkter Zugriff, nicht einmal lesend.
+revoke all on public.sync_records_history from anon, authenticated;
+
 -- Globale Sequenz; Lücken sind unproblematisch. Innerhalb eines Haushalts
 -- werden Schreibvorgänge per Advisory Lock serialisiert (sync_push), damit
 -- Revisionen in Commit-Reihenfolge steigen und kein Gerät eine später
 -- sichtbar werdende kleinere Revision überspringt.
 create sequence public.sync_rev_seq;
+
+-- ---------------------------------------------------------------------------
+-- Felder, die bei einem echten Konflikt (siehe sync_push) nie allein per
+-- "neuere Uhrzeit gewinnt" entschieden werden - Geldbeträge und die Felder,
+-- die die Kündigungsfrist-Berechnung füttern (Kategorie C aus den
+-- Architektur-Notizen, Phase 13B.1/13C). Ein Überlapp auf einem dieser
+-- Felder wird abgelehnt statt stillschweigend überschrieben; disjunkte
+-- Änderungen (verschiedene Felder) werden weiterhin automatisch gemerged.
+-- ---------------------------------------------------------------------------
+
+create function public.protected_fields(p_entity_type text)
+returns text[]
+language sql
+immutable
+as $$
+  select case p_entity_type
+    when 'bills' then array['totalAmount', 'advancePayments', 'balance']
+    when 'billItems' then array['amount']
+    when 'costEntries' then array['amount']
+    when 'wasteCosts' then array['amount']
+    when 'contracts' then array[
+      'monthlyCost', 'yearlyCost', 'startDate', 'endDate',
+      'cancellationPeriodValue', 'cancellationPeriodUnit'
+    ]
+    else array[]::text[]
+  end;
+$$;
+
+-- Oberste JSON-Schlüssel, deren Wert sich zwischen a und b unterscheidet.
+-- updatedAt/createdAt/syncVersion zählen nie als inhaltliche Änderung -
+-- sonst würde die bei jeder lokalen Bearbeitung ohnehin neue updatedAt
+-- jeden echten Konflikt fälschlich wie einen Feld-Überlapp aussehen lassen.
+create function public.jsonb_changed_keys(a jsonb, b jsonb)
+returns text[]
+language sql
+immutable
+as $$
+  select coalesce(array_agg(key), array[]::text[])
+  from (
+    select key from jsonb_object_keys(a) as key
+    union
+    select key from jsonb_object_keys(b) as key
+  ) keys
+  where key not in ('updatedAt', 'createdAt', 'syncVersion')
+    and a -> key is distinct from b -> key;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Hilfsfunktion: ist der angemeldete Nutzer Mitglied des Haushalts?
@@ -206,11 +276,20 @@ $$;
 -- p_changes: [{ "entityType", "id", "data", "updatedAt", "baseRev" }, ...]
 --
 -- Pro Änderung:
---   * neu, oder Server-Revision = baseRev  -> übernehmen, neue Revision
---   * Server-Revision weicht ab (Konflikt):
---       updatedAt der Änderung neuer       -> übernehmen ("conflict": true,
---                                             "previous" = überschriebene Version)
---       sonst                              -> ablehnen, Serverversion zurück
+--   * neu, oder Server-Revision = baseRev     -> übernehmen, neue Revision
+--   * Server-Revision weicht ab (echter Konflikt): Baseline bei rev=baseRev
+--     aus sync_records_history laden und gegen beide Seiten diffen:
+--       - Baseline fehlt (altes/unbekanntes baseRev)      -> ablehnen
+--       - Tombstone auf dem Server, Änderung löscht deletedAt -> ablehnen
+--         (keine stille Wiederbelebung gelöschter Datensätze)
+--       - geänderte Felder beider Seiten disjunkt          -> mergen, kein
+--         Konfliktflag (nichts geht verloren)
+--       - Überlapp, aber nur auf nicht-geschützten Feldern -> neuere
+--         updatedAt gewinnt ("conflict": true, "previous" = überschriebene
+--         Version)
+--       - Überlapp auf einem geschützten Feld (siehe protected_fields)
+--         -> ablehnen, Serverversion bleibt unverändert; nie ein Geldbetrag
+--         oder Kündigungsfrist-Feld allein per Uhrzeit entschieden
 -- Gleiche Semantik wie InMemorySyncServer im Client (Tests).
 -- ---------------------------------------------------------------------------
 
@@ -229,6 +308,14 @@ declare
   v_updated timestamptz;
   v_base bigint;
   v_cur public.sync_records%rowtype;
+  v_baseline public.sync_records_history%rowtype;
+  v_client_changed text[];
+  v_server_changed text[];
+  v_overlap text[];
+  v_protected text[];
+  v_merged jsonb;
+  v_merged_updated timestamptz;
+  v_field text;
   v_rev bigint;
   v_results jsonb := '[]'::jsonb;
 begin
@@ -265,30 +352,107 @@ begin
       v_rev := nextval('public.sync_rev_seq');
       insert into public.sync_records (household_id, entity_type, id, data, updated_at, rev, modified_by)
       values (p_household, v_type, v_id, v_data, v_updated, v_rev, v_user);
+      insert into public.sync_records_history (household_id, entity_type, id, rev, data, updated_at)
+      values (p_household, v_type, v_id, v_rev, v_data, v_updated);
       v_results := v_results || jsonb_build_object(
         'entityType', v_type, 'id', v_id, 'status', 'applied', 'rev', v_rev, 'conflict', false);
-    elsif v_cur.rev = v_base or v_updated > v_cur.updated_at then
+      continue;
+    end if;
+
+    if v_cur.rev = v_base then
       v_rev := nextval('public.sync_rev_seq');
       update public.sync_records
       set data = v_data, updated_at = v_updated, rev = v_rev, modified_by = v_user
       where household_id = p_household and entity_type = v_type and id = v_id;
-      if v_cur.rev = v_base then
-        v_results := v_results || jsonb_build_object(
-          'entityType', v_type, 'id', v_id, 'status', 'applied', 'rev', v_rev, 'conflict', false);
-      else
-        v_results := v_results || jsonb_build_object(
-          'entityType', v_type, 'id', v_id, 'status', 'applied', 'rev', v_rev, 'conflict', true,
-          'previous', jsonb_build_object(
-            'entityType', v_cur.entity_type, 'id', v_cur.id, 'data', v_cur.data,
-            'updatedAt', v_cur.data ->> 'updatedAt', 'rev', v_cur.rev));
-      end if;
-    else
+      insert into public.sync_records_history (household_id, entity_type, id, rev, data, updated_at)
+      values (p_household, v_type, v_id, v_rev, v_data, v_updated);
+      v_results := v_results || jsonb_build_object(
+        'entityType', v_type, 'id', v_id, 'status', 'applied', 'rev', v_rev, 'conflict', false);
+      continue;
+    end if;
+
+    -- Echter Konflikt: v_cur.rev != v_base. Zuerst Anti-Resurrection, dann
+    -- Baseline laden und Feld-Diff versuchen.
+    if v_cur.data ->> 'deletedAt' is not null and v_data ->> 'deletedAt' is null then
       v_results := v_results || jsonb_build_object(
         'entityType', v_type, 'id', v_id, 'status', 'rejected',
         'server', jsonb_build_object(
           'entityType', v_cur.entity_type, 'id', v_cur.id, 'data', v_cur.data,
           'updatedAt', v_cur.data ->> 'updatedAt', 'rev', v_cur.rev));
+      continue;
     end if;
+
+    select * into v_baseline
+    from public.sync_records_history h
+    where h.household_id = p_household and h.entity_type = v_type and h.id = v_id and h.rev = v_base;
+
+    if not found then
+      -- Baseline nicht (mehr) rekonstruierbar - niemals raten, lieber
+      -- ablehnen (Kategorie-C-Fallback, siehe Architektur-Notizen 13C.2).
+      v_results := v_results || jsonb_build_object(
+        'entityType', v_type, 'id', v_id, 'status', 'rejected',
+        'server', jsonb_build_object(
+          'entityType', v_cur.entity_type, 'id', v_cur.id, 'data', v_cur.data,
+          'updatedAt', v_cur.data ->> 'updatedAt', 'rev', v_cur.rev));
+      continue;
+    end if;
+
+    v_client_changed := public.jsonb_changed_keys(v_baseline.data, v_data);
+    v_server_changed := public.jsonb_changed_keys(v_baseline.data, v_cur.data);
+    select coalesce(array_agg(x), array[]::text[]) into v_overlap
+    from unnest(v_client_changed) x where x = any(v_server_changed);
+    v_protected := public.protected_fields(v_type);
+
+    if array_length(v_overlap, 1) is null then
+      -- Disjunkte Änderungen: beide Seiten bleiben erhalten.
+      v_merged := v_cur.data;
+      foreach v_field in array v_client_changed loop
+        v_merged := jsonb_set(v_merged, array[v_field], v_data -> v_field);
+      end loop;
+      v_merged_updated := greatest(v_updated, v_cur.updated_at);
+      v_merged := jsonb_set(v_merged, array['updatedAt'], to_jsonb(v_merged_updated));
+      v_rev := nextval('public.sync_rev_seq');
+      update public.sync_records
+      set data = v_merged, updated_at = v_merged_updated, rev = v_rev, modified_by = v_user
+      where household_id = p_household and entity_type = v_type and id = v_id;
+      insert into public.sync_records_history (household_id, entity_type, id, rev, data, updated_at)
+      values (p_household, v_type, v_id, v_rev, v_merged, v_merged_updated);
+      v_results := v_results || jsonb_build_object(
+        'entityType', v_type, 'id', v_id, 'status', 'applied', 'rev', v_rev, 'conflict', false);
+      continue;
+    end if;
+
+    if exists (select 1 from unnest(v_overlap) f where f = any(v_protected)) then
+      -- Überlapp auf einem geschützten Feld: nie per Uhrzeit entscheiden.
+      v_results := v_results || jsonb_build_object(
+        'entityType', v_type, 'id', v_id, 'status', 'rejected',
+        'server', jsonb_build_object(
+          'entityType', v_cur.entity_type, 'id', v_cur.id, 'data', v_cur.data,
+          'updatedAt', v_cur.data ->> 'updatedAt', 'rev', v_cur.rev));
+      continue;
+    end if;
+
+    -- Überlapp, aber nur auf unkritischen Feldern: wie bisher nach Uhrzeit.
+    if v_updated > v_cur.updated_at then
+      v_rev := nextval('public.sync_rev_seq');
+      update public.sync_records
+      set data = v_data, updated_at = v_updated, rev = v_rev, modified_by = v_user
+      where household_id = p_household and entity_type = v_type and id = v_id;
+      insert into public.sync_records_history (household_id, entity_type, id, rev, data, updated_at)
+      values (p_household, v_type, v_id, v_rev, v_data, v_updated);
+      v_results := v_results || jsonb_build_object(
+        'entityType', v_type, 'id', v_id, 'status', 'applied', 'rev', v_rev, 'conflict', true,
+        'previous', jsonb_build_object(
+          'entityType', v_cur.entity_type, 'id', v_cur.id, 'data', v_cur.data,
+          'updatedAt', v_cur.data ->> 'updatedAt', 'rev', v_cur.rev));
+      continue;
+    end if;
+
+    v_results := v_results || jsonb_build_object(
+      'entityType', v_type, 'id', v_id, 'status', 'rejected',
+      'server', jsonb_build_object(
+        'entityType', v_cur.entity_type, 'id', v_cur.id, 'data', v_cur.data,
+        'updatedAt', v_cur.data ->> 'updatedAt', 'rev', v_cur.rev));
   end loop;
 
   return v_results;
@@ -304,9 +468,13 @@ revoke all on function public.create_household(text) from public, anon;
 revoke all on function public.create_household_invite(uuid) from public, anon;
 revoke all on function public.join_household(text) from public, anon;
 revoke all on function public.sync_push(uuid, jsonb) from public, anon;
+revoke all on function public.protected_fields(text) from public, anon;
+revoke all on function public.jsonb_changed_keys(jsonb, jsonb) from public, anon;
 
 grant execute on function public.is_household_member(uuid) to authenticated;
 grant execute on function public.create_household(text) to authenticated;
 grant execute on function public.create_household_invite(uuid) to authenticated;
 grant execute on function public.join_household(text) to authenticated;
 grant execute on function public.sync_push(uuid, jsonb) to authenticated;
+grant execute on function public.protected_fields(text) to authenticated;
+grant execute on function public.jsonb_changed_keys(jsonb, jsonb) to authenticated;

@@ -1,4 +1,5 @@
-import type { PullPage, PushChange, PushResult, SyncRecord, SyncTransport } from './syncTypes'
+import type { SyncableEntity } from '../../domain/models/entities'
+import { changedKeys, protectedFields, type PullPage, type PushChange, type PushResult, type SyncRecord, type SyncTransport } from './syncTypes'
 
 /**
  * In-memory stand-in for the Supabase backend of one household. It
@@ -10,36 +11,95 @@ import type { PullPage, PushChange, PushResult, SyncRecord, SyncTransport } from
  */
 export class InMemorySyncServer {
   private readonly records = new Map<string, SyncRecord>()
+  /** Every revision a record ever held, so a real conflict (baseRev != the
+   * record's current rev) can be resolved against the exact snapshot the
+   * pushing device actually started from - see resolveConflict() below. */
+  private readonly history = new Map<string, SyncRecord>()
   private rev = 0
 
   push(changes: PushChange[]): PushResult[] {
     return changes.map((change) => {
       const key = `${change.entityType}:${change.id}`
       const current = this.records.get(key)
-      const store = (): SyncRecord => {
-        this.rev += 1
-        const record: SyncRecord = {
-          entityType: change.entityType,
-          id: change.id,
-          data: structuredClone(change.data),
-          updatedAt: change.updatedAt,
-          rev: this.rev,
-        }
-        this.records.set(key, record)
-        return record
-      }
 
       if (!current || current.rev === change.baseRev) {
-        return { entityType: change.entityType, id: change.id, status: 'applied', rev: store().rev, conflict: false }
+        return { entityType: change.entityType, id: change.id, status: 'applied', rev: this.store(key, change).rev, conflict: false }
       }
-      // Someone else changed the record since this device last saw it:
-      // the newer edit wins, ties go to the server (already persisted).
-      if (change.updatedAt > current.updatedAt) {
-        const previous = structuredClone(current)
-        return { entityType: change.entityType, id: change.id, status: 'applied', rev: store().rev, conflict: true, previous }
-      }
-      return { entityType: change.entityType, id: change.id, status: 'rejected', server: structuredClone(current) }
+      return this.resolveConflict(key, change, current)
     })
+  }
+
+  /**
+   * Real conflict: another device changed the record since `change.baseRev`.
+   * Diffs the incoming change and the current server state against the
+   * snapshot at `baseRev` (not against each other) to see which fields each
+   * side actually touched:
+   *  - disjoint fields  -> merge both edits, nothing lost, no conflict flag.
+   *  - overlap, but only on fields that may be resolved by clock
+   *    (`protectedFields` excluded) -> newer `updatedAt` wins, as before.
+   *  - overlap on a protected field, or the base snapshot is gone (e.g. an
+   *    old/lying client) -> reject outright; the caller keeps its own
+   *    version locally, the server version is untouched. Never a silent
+   *    pick between two diverging money/contract-deadline values.
+   *  - the server's current version is a tombstone and the incoming change
+   *    tries to clear `deletedAt` -> reject (no silent resurrection).
+   */
+  private resolveConflict(key: string, change: PushChange, current: SyncRecord): PushResult {
+    const currentData = current.data as unknown as Record<string, unknown>
+    if (currentData.deletedAt != null && (change.data as unknown as Record<string, unknown>).deletedAt == null) {
+      return { entityType: change.entityType, id: change.id, status: 'rejected', server: structuredClone(current) }
+    }
+
+    const baseline = change.baseRev === null ? undefined : this.history.get(`${key}:${change.baseRev}`)
+    if (!baseline) {
+      return { entityType: change.entityType, id: change.id, status: 'rejected', server: structuredClone(current) }
+    }
+
+    const baselineData = baseline.data as unknown as Record<string, unknown>
+    const clientChanged = changedKeys(baselineData, change.data as unknown as Record<string, unknown>)
+    const serverChanged = changedKeys(baselineData, currentData)
+    const overlap = [...clientChanged].filter((k) => serverChanged.has(k))
+    const protected_ = new Set(protectedFields(change.entityType))
+
+    if (overlap.length === 0) {
+      const changeData = change.data as unknown as Record<string, unknown>
+      const merged = { ...currentData }
+      for (const field of clientChanged) merged[field] = changeData[field]
+      const updatedAt = change.updatedAt > current.updatedAt ? change.updatedAt : current.updatedAt
+      merged.updatedAt = updatedAt
+      return {
+        entityType: change.entityType,
+        id: change.id,
+        status: 'applied',
+        rev: this.store(key, { ...change, data: merged as unknown as SyncableEntity, updatedAt }).rev,
+        conflict: false,
+      }
+    }
+
+    if (overlap.some((field) => protected_.has(field))) {
+      return { entityType: change.entityType, id: change.id, status: 'rejected', server: structuredClone(current) }
+    }
+
+    // Overlap, but only on fields clock order may settle.
+    if (change.updatedAt > current.updatedAt) {
+      const previous = structuredClone(current)
+      return { entityType: change.entityType, id: change.id, status: 'applied', rev: this.store(key, change).rev, conflict: true, previous }
+    }
+    return { entityType: change.entityType, id: change.id, status: 'rejected', server: structuredClone(current) }
+  }
+
+  private store(key: string, change: PushChange): SyncRecord {
+    this.rev += 1
+    const record: SyncRecord = {
+      entityType: change.entityType,
+      id: change.id,
+      data: structuredClone(change.data),
+      updatedAt: change.updatedAt,
+      rev: this.rev,
+    }
+    this.records.set(key, record)
+    this.history.set(`${key}:${record.rev}`, record)
+    return record
   }
 
   pull(sinceRev: number, limit: number): PullPage {

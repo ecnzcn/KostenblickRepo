@@ -243,3 +243,115 @@ describe('SyncEngine with two devices', () => {
     await expect(bogus.run()).rejects.toThrow('unerwartete Antwort')
   })
 })
+
+// Direct server-level tests for the field-level conflict resolution
+// (Kategorie A/B/C merge, see syncTypes.ts `protectedFields`/`changedKeys`
+// and the identical SQL logic in supabase/migrations). Bypasses FakeDevice
+// so the pushed payload can carry arbitrary business fields (monthlyCost,
+// provider, ...) instead of just the generic test `name` field.
+describe('InMemorySyncServer field-level conflict resolution', () => {
+  type ContractData = SyncableEntity & { provider: string; monthlyCost: number }
+
+  function contract(overrides: Partial<ContractData> = {}): ContractData {
+    return {
+      id: 'c1',
+      createdAt: '2026-10-01T09:00:00.000Z',
+      updatedAt: '2026-10-01T09:00:00.000Z',
+      deletedAt: null,
+      syncVersion: 1,
+      provider: 'E.ON',
+      monthlyCost: 50,
+      ...overrides,
+    }
+  }
+
+  function push(server: InMemorySyncServer, data: ContractData, baseRev: number | null): PushResult {
+    const [result] = server.push([{ entityType: 'contracts', id: data.id, data, updatedAt: data.updatedAt, baseRev }])
+    return result!
+  }
+
+  function revOf(result: PushResult): number {
+    if (result.status !== 'applied') throw new Error(`expected applied, got ${result.status}`)
+    return result.rev
+  }
+
+  it('merges disjoint field edits from two devices and flags no conflict', () => {
+    const server = new InMemorySyncServer()
+    const baseRev = revOf(push(server, contract(), null))
+
+    const fromPhone = push(
+      server,
+      contract({ monthlyCost: 60, updatedAt: '2026-10-01T10:00:00.000Z' }),
+      baseRev,
+    )
+    expect(fromPhone.status).toBe('applied')
+
+    const fromTablet = push(
+      server,
+      contract({ provider: 'Vattenfall', updatedAt: '2026-10-01T10:05:00.000Z' }),
+      baseRev,
+    )
+    expect(fromTablet).toMatchObject({ status: 'applied', conflict: false })
+
+    const merged = server.all().find((r) => r.id === 'c1')!.data as unknown as ContractData
+    expect(merged.monthlyCost).toBe(60)
+    expect(merged.provider).toBe('Vattenfall')
+  })
+
+  it('never resolves an overlapping change to a protected financial field by timestamp alone', () => {
+    const server = new InMemorySyncServer()
+    const baseRev = revOf(push(server, contract(), null))
+
+    // Both devices change monthlyCost on top of the same baseline - a real
+    // overlap on a protected field, not a disjoint edit.
+    const fromPhone = push(server, contract({ monthlyCost: 60, updatedAt: '2026-10-01T10:00:00.000Z' }), baseRev)
+    expect(fromPhone.status).toBe('applied')
+
+    const fromTablet = push(server, contract({ monthlyCost: 70, updatedAt: '2026-10-01T11:00:00.000Z' }), baseRev)
+    // Even though the tablet's edit is newer, it must never silently
+    // overwrite the phone's already-applied monthlyCost change.
+    expect(fromTablet.status).toBe('rejected')
+    if (fromTablet.status === 'rejected') {
+      expect((fromTablet.server.data as unknown as ContractData).monthlyCost).toBe(60)
+    }
+
+    // Neither value was silently discarded: the server kept the phone's
+    // 60, and the tablet's own rejected 70 remains in its local pending
+    // queue/conflict log (SyncEngine/IndexedDbSyncLocalStore), not lost.
+    const current = server.all().find((r) => r.id === 'c1')!.data as unknown as ContractData
+    expect(current.monthlyCost).toBe(60)
+  })
+
+  it('treats a conflict with no reconstructable baseline as unresolved (reject, never guess)', () => {
+    const server = new InMemorySyncServer()
+    push(server, contract(), null)
+
+    // A baseRev that was never actually assigned by this server (e.g. a
+    // corrupted/lying client) must never be treated as "no conflict" or as
+    // a safe merge basis.
+    const result = push(server, contract({ monthlyCost: 999, updatedAt: '2026-10-01T12:00:00.000Z' }), 9999)
+    expect(result.status).toBe('rejected')
+  })
+
+  it('never resurrects a tombstoned record via a stale conflicting update', () => {
+    const server = new InMemorySyncServer()
+    const baseRev = revOf(push(server, contract(), null))
+
+    const deleteRev = revOf(
+      push(server, contract({ deletedAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-10-01T10:00:00.000Z' }), baseRev),
+    )
+    expect(deleteRev).toBeGreaterThan(baseRev)
+
+    // An offline device that never saw the delete tries to push an older,
+    // still-active version on top of the original baseline.
+    const stale = push(
+      server,
+      contract({ provider: 'Vattenfall', updatedAt: '2026-10-01T11:00:00.000Z' }),
+      baseRev,
+    )
+    expect(stale.status).toBe('rejected')
+
+    const current = server.all().find((r) => r.id === 'c1')!.data as unknown as ContractData
+    expect(current.deletedAt).not.toBeNull()
+  })
+})
