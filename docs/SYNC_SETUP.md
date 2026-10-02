@@ -36,9 +36,31 @@ landen).
 
 3. Speichern.
 
-Hinweis: Der eingebaute E-Mail-Versand von Supabase ist nur für wenige
-E-Mails pro Stunde gedacht. Für zwei Personen reicht das; bei „rate limit“
-kurz warten.
+### Zuverlässigen Mailversand einrichten (empfohlen)
+
+Der eingebaute Standard-Mailversand von Supabase ist ausdrücklich nur zum
+Testen gedacht und extrem knapp limitiert (oft nur 2–4 Mails pro Stunde für
+das gesamte Projekt). Ist dieses Kontingent aufgebraucht, antwortet er auf
+weitere Anmeldecode-Anfragen meist nicht mit einer sauberen Fehlermeldung,
+sondern mit einem harten 500-Fehler auf `/auth/v1/otp` (sichtbar unter
+**Authentication → Logs**) – Kostenblick zeigt dann nur die generische
+Meldung „Die Synchronisierung ist fehlgeschlagen“, weil der rohe
+Server-Fehler nie im UI landet.
+
+Für echten Betrieb – auch schon für nur zwei Personen – deshalb **Custom
+SMTP** einrichten:
+
+1. **Project Settings** → **Authentication** → **SMTP Settings** →
+   **Enable Custom SMTP**.
+2. Zugangsdaten eines echten Mailanbieters eintragen, z. B.
+   [Resend](https://resend.com) (kostenloses Kontingent reicht für einen
+   Haushalt) oder ein Gmail-Konto mit App-Passwort.
+3. Speichern, danach in Kostenblick über **Code senden** eine Test-Mail
+   verschicken.
+
+Ohne Custom SMTP funktioniert die Anmeldung weiterhin, nur eben mit dem
+engen Limit des Test-Mailversands – bei einem 500-Fehler kurz (z. B. eine
+Stunde) warten und erneut versuchen, oder gleich Custom SMTP einrichten.
 
 ## 4. Zugangsdaten in die App eintragen
 
@@ -81,6 +103,10 @@ synchronisiert“ → **Anzeigen**.
 - Kostenlose Supabase-Projekte werden nach 7 Tagen ohne Nutzung pausiert.
   Die App läuft dann lokal normal weiter; im Dashboard das Projekt mit
   **Restore** wieder aktivieren.
+- Schlägt **Code senden** mit „Die Synchronisierung ist fehlgeschlagen“
+  fehl, obwohl E-Mail und Server-Daten stimmen: siehe „Zuverlässigen
+  Mailversand einrichten“ oben (Punkt 3) – meist ist das Limit des
+  eingebauten Test-Mailversands erreicht.
 - Dokument-Dateien (PDFs, Fotos) werden noch nicht übertragen, nur ihre
   Angaben. Das kommt in Phase 13F.
 - Konflikte (beide ändern denselben Eintrag gleichzeitig): Ändern beide
