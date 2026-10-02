@@ -832,7 +832,9 @@ wächst. Der `syncQueue`-Store, `SyncQueueItem`, sowie
 `getPendingSyncChanges()`/`removeSyncChange()` bleiben als vorbereitete
 Infrastruktur bestehen. Die eigentlichen Sync-Metadaten (`updatedAt`,
 `syncVersion`, `deletedAt`) werden von `withSyncMetadata()` weiterhin
-unverändert gepflegt – unabhängig von der Queue.
+unverändert gepflegt – unabhängig von der Queue. *(Überholt seit Phase
+13B: `save()`/`delete()` markieren wieder, jetzt mit deterministischem,
+begrenztem Schlüssel und einem Consumer – siehe „Sync“.)*
 
 **Settings**: `/kosten` (bislang ohne dauerhaften Navigationszugang) ist
 jetzt in `SettingsPage.tsx` verlinkt, im bestehenden Muster der anderen
@@ -997,35 +999,81 @@ vor dem Restore (nur Zähler pro Store) und keine Teilwiederherstellung
 (z. B. „nur Verträge") – beides wäre über den beauftragten Umfang
 hinausgegangen. Ein Restore ersetzt immer alle zwölf Stores gemeinsam.
 
-### Sync
+### Sync (Phase 13B–13E)
 
-**Aktueller Stand**: Es gibt in V1 **keine** implementierte Sync-
-Funktionalität. `src/services/sync/` enthält bislang ausschließlich eine
-`.gitkeep` – es existiert weder eine `SyncService`-Schnittstelle noch eine
-Mock-/lokale Implementierung noch `sync()`/`pushChanges()`/
-`pullChanges()`/`resolveConflict()`-Methoden irgendwo im Code. Frühere
-Fassungen dieses Abschnitts beschrieben bereits eine solche Abstraktion –
-das war zum jeweiligen Zeitpunkt nicht (mehr) der tatsächliche
-Implementierungsstand und wurde korrigiert.
+Einrichtung für Nutzer: `docs/SYNC_SETUP.md`. Architektur-Bericht: Phase 13A
+(Claude-Doc „Kostenblick – Phase 13A: Sync Architecture Discovery“).
 
-**Bereits vorhandene Vorbereitung**: Die eigentlichen Sync-Metadaten
-(`updatedAt`, `syncVersion`, `deletedAt`) werden von `withSyncMetadata()`
-bei jedem Schreibzugriff gepflegt (siehe „Soft-Delete"-Verhalten in
-`database/repository.ts`). Die `syncQueue`-Infrastruktur (Store,
-`SyncQueueItem`, `enqueueSyncChange()`, `getPendingSyncChanges()`,
-`removeSyncChange()` in `domain/repositories/syncQueue.ts`) existiert
-ebenfalls bereits, ist aber seit Phase 10 nicht mehr an `save()`/
-`delete()` angeschlossen und hat aktuell keinerlei Aufrufer – die
-Warteschlange bleibt dauerhaft leer, bis ein echter Consumer existiert.
+**Modell**: entity-basierter Delta-Sync über Supabase. Ein Haushalt hat 1..n
+gleichberechtigte Mitglieder (eigene E-Mail je Person). Alle Fachdaten
+liegen serverseitig generisch in `sync_records` (eine Zeile pro Entität,
+Inhalt als JSON) mit einer vom Server vergebenen Revision `rev`. Geräte
+holen alles mit `rev > Cursor`; der Cursor liegt je Haushalt in
+`localStorage` (`syncSettings.ts`) – bewusst keine IndexedDB-Versions-
+änderung, damit ältere Backups wiederherstellbar bleiben.
 
-**Künftig geplant, ausdrücklich nicht Teil von V1**: eine
-`SyncService`-Abstraktion mit `sync()`/`pushChanges()`/`pullChanges()`/
-`resolveConflict()`, zunächst mit einer Mock-/lokalen Implementierung,
-später mit einem echten Backend. Konfliktstrategie: **Last Write Wins**
-anhand von `updatedAt` (bereits als künftige Strategie festgelegt, aber
-noch nicht implementiert). Keine Fake-Synchronisierung: solange kein
-`SyncService`-Consumer existiert, wird auch keine Warteschlange dafür
-gefüllt und keine Mock-Implementierung vorgetäuscht.
+**Synchronisierte Typen**: `SYNC_ENTITY_TYPES` in
+`services/sync/syncTypes.ts` (properties, bills, billItems, costEntries,
+wasteCosts, contracts, reminders, documents). Nicht synchronisiert:
+`categories` (feste Seeds), `users` (ungenutzt), `documentFiles` (eigene
+Pipeline, Phase 13F), Reminder-Intervall-Einstellungen (gerätelokal).
+
+**Lokale Markierung**: `IndexedDBRepository.save()/delete()` schreiben in
+derselben Transaktion einen `syncQueue`-Eintrag mit deterministischem
+Schlüssel `<entityType>:<id>` (begrenzt auf einen Eintrag pro Datensatz –
+die Queue wächst nie unbegrenzt, auch ohne eingerichteten Sync).
+`serverRev` (zuletzt gesehene Server-Revision) ist rein lokale Buchhaltung:
+`save()` übernimmt den gespeicherten Wert, wenn der Aufrufer ihn nicht
+mitgibt, und legt den Schlüssel nie an, solange ein Datensatz nie
+synchronisiert wurde. Vor dem Senden wird er entfernt (`toServerData`).
+
+**Ablauf** (`SyncEngine.run()`): erst Push aller markierten Datensätze (mit
+`baseRev`), dann Pull ab Cursor. Gepullte/bestätigte Datensätze schreibt
+`IndexedDbSyncLocalStore` direkt in die Stores (nie über `save()`, sonst
+würden sie erneut markiert). Ein lokal markierter Datensatz wird beim Pull
+nie überschrieben.
+
+**Konflikte** (Server, SQL `sync_push`, identisch in `InMemorySyncServer`):
+Server-Revision = `baseRev` → übernehmen. Sonst gewinnt der neuere
+`updatedAt`; bei Gleichstand der Server. Die unterlegene Version landet im
+Konfliktprotokoll (`localStorage`, max. 50, in den Einstellungen sichtbar) –
+die Geräteuhr entscheidet also nur im echten Konfliktfall, nie über die
+Reihenfolge.
+
+**Reminder-IDs**: generierte Kündigungs-Reminder haben die deterministische
+ID `reminder:<contractId>:<offsetDays>:<YYYY-MM-DD>`, damit zwei Geräte
+keine Duplikate erzeugen. Ein erledigter Reminder mit gleichem Offset und
+Datum gilt als erfüllt und wird nicht neu erzeugt.
+
+**Haushalt & Migration** (`services/sync/householdData.ts`): beim Anlegen/
+Verbinden werden in EINER Transaktion alle `userId` auf die `householdId`
+gesetzt und alle Datensätze (inkl. Soft-Deletes) markiert. Beitritt mit
+vorhandenen lokalen Daten: Nutzer wählt „Zusammenführen“ oder „Ersetzen“
+(Human Gate, Backup wird angeboten). Neue Entitäten bekommen
+`getCurrentOwnerId()` (Haushalt oder `local-user`). Nach einem Restore auf
+einem verbundenen Gerät werden alle Datensätze erneut markiert und der
+Cursor zurückgesetzt.
+
+**Login**: E-Mail-Code (OTP), kein Magic Link – ein Link öffnet auf iOS
+Safari statt der installierten PWA (getrennter Speicher).
+
+**Auslöser** (`hooks/useAutoSync.ts`): App-Start, Rückkehr in den
+Vordergrund (max. alle 30 s), `online`-Event, Button. Kein Background Sync
+(gibt es in iOS-PWAs nicht). Brachte ein Lauf fremde Änderungen, fragt ein
+Banner, bevor die Seiten neu geladen werden (Remount der Routen über
+`dataVersion`), damit offene Formulare nicht verloren gehen.
+
+**Server**: `supabase/migrations/*.sql`. RLS: Mitglieder dürfen nur lesen;
+jedes Schreiben läuft über `security definer`-Funktionen
+(`create_household`, `create_household_invite`, `join_household`,
+`sync_push`), die Mitgliedschaft prüfen und Revisionen vergeben. Pro
+Haushalt serialisiert ein Advisory Lock die Pushes, damit Revisionen in
+Commit-Reihenfolge steigen. Tests: `supabase/tests/sync_schema.test.sql`
+gegen ein lokales Postgres mit `supabase_stubs.sql`.
+
+`supabase-js` wird erst bei eingerichtetem Sync nachgeladen (eigener Chunk).
+
+**Noch offen**: Dokument-Dateien (13F), Release/Zwei-Geräte-Test (13G).
 
 ## PWA-Regeln
 
@@ -1035,7 +1083,7 @@ gefüllt und keine Mock-Implementierung vorgetäuscht.
 - mobile-first, iPhone 15 Pro als primäres Zielgerät
 - IndexedDB als primäre lokale Datenquelle; die App darf nicht voraussetzen,
   dass dauerhaft Internet verfügbar ist
-- lokale Änderungen werden für spätere Synchronisierung vorgemerkt
+- lokale Änderungen werden für die Synchronisierung vorgemerkt (syncQueue)
 
 **Update-Hinweis (Phase 12E)**: `registerType: 'prompt'` (nicht
 `'autoUpdate'`) + `injectRegister: false` in `vite.config.ts` – ein neuer

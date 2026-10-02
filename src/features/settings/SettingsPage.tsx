@@ -5,6 +5,7 @@ import { ROUTES } from '../../constants/navigation'
 import { BackupSettings } from './components/BackupSettings'
 import { NotificationSettings } from './components/NotificationSettings'
 import { ReminderIntervalSettings } from './components/ReminderIntervalSettings'
+import { SyncSettings } from './components/SyncSettings'
 
 export function SettingsPage() {
   return (
@@ -41,6 +42,7 @@ export function SettingsPage() {
 
         <ReminderIntervalSettings />
         <NotificationSettings />
+        <SyncSettings />
         <BackupSettings />
 
         <p className="text-center text-xs text-neutral-400">Version {APP_VERSION}</p>

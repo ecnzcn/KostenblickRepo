@@ -75,9 +75,10 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('link', { name: 'Kosten' })).toHaveAttribute('href', '#/kosten')
   })
 
-  it('no longer shows the non-functional "Synchronisierung" placeholder', () => {
+  it('shows the sync section, starting with the server setup while nothing is configured', async () => {
     renderPage()
-    expect(screen.queryByText('Synchronisierung')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Synchronisierung' })).toBeInTheDocument()
+    expect(await screen.findByLabelText('Project URL')).toBeInTheDocument()
   })
 
   it('shows all four reminder intervals enabled by default and persists a toggle', () => {

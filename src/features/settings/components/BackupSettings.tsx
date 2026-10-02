@@ -3,6 +3,7 @@ import { createBackup, validateBackup } from '../../../domain/usecases/backup'
 import { evaluateBackupFile, performRestore, type BackupEvaluation, type BackupSummary } from '../../../domain/usecases/restore'
 import type { KostenblickBackup } from '../../../domain/usecases/backup'
 import { formatDate } from '../../../utils/formatters'
+import { handleLocalDataRestored } from '../../../services/sync/syncService'
 
 type ExportStatus = { kind: 'idle' } | { kind: 'exporting' } | { kind: 'success' } | { kind: 'error'; message: string }
 
@@ -114,6 +115,7 @@ export function BackupSettings() {
     setRestoreState({ kind: 'restoring' })
     try {
       await performRestore(backup)
+      await handleLocalDataRestored()
       setRestoreState({ kind: 'success' })
     } catch (caught) {
       setRestoreState({
