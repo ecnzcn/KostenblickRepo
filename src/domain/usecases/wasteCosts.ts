@@ -1,4 +1,4 @@
-import { DEFAULT_USER_ID } from '../../constants/user'
+import { getCurrentOwnerId } from '../../services/sync/syncSettings'
 import { generateId } from '../../utils/id'
 import { roundToCents } from '../../utils/money'
 import type { WasteCategory, WasteCost } from '../models/entities'
@@ -43,7 +43,7 @@ export async function createWasteCost(input: WasteCostInput): Promise<WasteCost>
     updatedAt: now,
     deletedAt: null,
     syncVersion: 1,
-    userId: DEFAULT_USER_ID,
+    userId: getCurrentOwnerId(),
     year: input.year,
     category: input.category,
     amount: input.amount,

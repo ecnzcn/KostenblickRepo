@@ -1,3 +1,4 @@
+import { cancellationReminderId } from '../domain/usecases/reminders/generateContractReminders'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { deleteDatabase } from '../database/database'
 import {
@@ -268,5 +269,27 @@ describe('dismissReminder', () => {
 
   it('throws for an unknown reminder id', async () => {
     await expect(dismissReminder('missing')).rejects.toThrow('nicht gefunden')
+  })
+})
+
+describe('sync-safe reminder identity (Phase 13B)', () => {
+  it('gives generated cancellation reminders a deterministic id from contract, offset and date', async () => {
+    const contract = await createContract(baseInput())
+    const reminders = await listRemindersForContract(contract.id)
+    for (const reminder of reminders) {
+      expect(reminder.id).toBe(cancellationReminderId(contract.id, reminder.offsetDays!, reminder.reminderDate))
+    }
+  })
+
+  it('does not recreate a dismissed reminder when the contract is saved again unchanged', async () => {
+    const contract = await createContract(baseInput())
+    const before = await listRemindersForContract(contract.id)
+    await dismissReminder(before[0]!.id)
+
+    await updateContract(contract.id, baseInput({ notes: 'nur Notiz geändert' }))
+
+    const after = await listRemindersForContract(contract.id)
+    expect(after).toHaveLength(before.length)
+    expect(after.find((r) => r.id === before[0]!.id)?.status).toBe('dismissed')
   })
 })

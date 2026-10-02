@@ -1,4 +1,4 @@
-import { DEFAULT_USER_ID } from '../../constants/user'
+import { getCurrentOwnerId } from '../../services/sync/syncSettings'
 import { generateId } from '../../utils/id'
 import { roundToCents } from '../../utils/money'
 import type { CancellationUnit, Contract } from '../models/entities'
@@ -38,7 +38,7 @@ function buildCandidate(id: string, input: ContractInput, existing?: Contract): 
     updatedAt: now,
     deletedAt: existing?.deletedAt ?? null,
     syncVersion: existing?.syncVersion ?? 1,
-    userId: existing?.userId ?? DEFAULT_USER_ID,
+    userId: existing?.userId ?? getCurrentOwnerId(),
     categoryId: input.categoryId,
     provider: input.provider,
     tariff: input.tariff,

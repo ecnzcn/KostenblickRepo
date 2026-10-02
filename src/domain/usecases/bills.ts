@@ -1,4 +1,4 @@
-import { DEFAULT_USER_ID } from '../../constants/user'
+import { getCurrentOwnerId } from '../../services/sync/syncSettings'
 import { generateId } from '../../utils/id'
 import { roundToCents } from '../../utils/money'
 import type { BalanceType, Bill, BillItem, BillType } from '../models/entities'
@@ -167,7 +167,7 @@ export async function createBillWithItems(input: BillInput): Promise<BillWithIte
     updatedAt: now,
     deletedAt: null,
     syncVersion: 1,
-    userId: DEFAULT_USER_ID,
+    userId: getCurrentOwnerId(),
     type: input.type,
     year: input.year,
     periodStart: input.periodStart,

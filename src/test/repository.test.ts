@@ -78,21 +78,32 @@ describe('IndexedDBRepository (syncable entity CRUD)', () => {
   })
 })
 
-describe('SyncQueue population (disabled - no consumer exists yet)', () => {
-  it('does not create a syncQueue entry on save', async () => {
+describe('SyncQueue population (Phase 13B)', () => {
+  it('marks a saved record as pending with one deterministic queue entry', async () => {
     await contractRepository.save(baseContract())
+    await contractRepository.save(baseContract({ monthlyCost: 45 }))
     const db = await getDatabase()
-    expect(await db.getAll('syncQueue')).toHaveLength(0)
+    const queue = await db.getAll('syncQueue')
+    expect(queue).toHaveLength(1)
+    expect(queue[0]).toMatchObject({ id: 'contracts:contract-1', entityType: 'contracts', entityId: 'contract-1', operation: 'upsert' })
   })
 
-  it('does not create a syncQueue entry on delete', async () => {
+  it('records a soft delete as a delete operation on the same queue entry', async () => {
     await contractRepository.save(baseContract())
     await contractRepository.delete('contract-1')
     const db = await getDatabase()
+    const queue = await db.getAll('syncQueue')
+    expect(queue).toHaveLength(1)
+    expect(queue[0]?.operation).toBe('delete')
+  })
+
+  it('does not queue anything when deleting a missing or already deleted record', async () => {
+    await contractRepository.delete('missing')
+    const db = await getDatabase()
     expect(await db.getAll('syncQueue')).toHaveLength(0)
   })
 
-  it('still maintains updatedAt, syncVersion and deletedAt while the queue stays empty', async () => {
+  it('still maintains updatedAt, syncVersion and deletedAt', async () => {
     const created = await contractRepository.save(baseContract())
     expect(created.updatedAt).not.toBe('')
     expect(created.syncVersion).toBe(1)
@@ -106,9 +117,18 @@ describe('SyncQueue population (disabled - no consumer exists yet)', () => {
     const deleted = await contractRepository.getAllIncludingDeleted()
     expect(deleted[0]?.deletedAt).not.toBeNull()
     expect(deleted[0]?.syncVersion).toBe(3)
+  })
 
+  it('keeps a stored serverRev when a caller saves a rebuilt entity without it', async () => {
     const db = await getDatabase()
-    expect(await db.getAll('syncQueue')).toHaveLength(0)
+    await db.put('contracts', { ...baseContract(), createdAt: 'x', updatedAt: 'x', syncVersion: 1, serverRev: 7 } as never)
+    const saved = await contractRepository.save(baseContract({ monthlyCost: 50 }))
+    expect((saved as Contract & { serverRev?: number }).serverRev).toBe(7)
+  })
+
+  it('never adds a serverRev key to a record that was never synced', async () => {
+    const saved = await contractRepository.save(baseContract())
+    expect('serverRev' in saved).toBe(false)
   })
 })
 

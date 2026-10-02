@@ -1,4 +1,4 @@
-import { DEFAULT_USER_ID } from '../../constants/user'
+import { getCurrentOwnerId } from '../../services/sync/syncSettings'
 import { generateId } from '../../utils/id'
 import type { CostEntry } from '../models/entities'
 import { costEntryRepository } from '../repositories/indexedDbRepositories'
@@ -30,7 +30,7 @@ export async function createCostEntry(input: CostEntryInput): Promise<CostEntry>
     updatedAt: now,
     deletedAt: null,
     syncVersion: 1,
-    userId: DEFAULT_USER_ID,
+    userId: getCurrentOwnerId(),
     categoryId: input.categoryId,
     amount: input.amount,
     date: input.date,
