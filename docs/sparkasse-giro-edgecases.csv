@@ -1,0 +1,10 @@
+"Auftragskonto";"Buchungstag";"Valutadatum";"Buchungstext";"Verwendungszweck";"Glaeubiger ID";"Mandatsreferenz";"Kundenreferenz (End-to-End)";"Sammlerreferenz";"Lastschrift Ursprungsbetrag";"Auslagenersatz Ruecklastschrift";"Beguenstigter/Zahlungspflichtiger";"Kontonummer/IBAN";"BIC (SWIFT-Code)";"Betrag";"Waehrung";"Info";"Kategorie"
+"DE00000000000000000001";"30.09.26";"30.09.26";"FOLGELASTSCHRIFT";"Vorgemerkte Lastschrift";"DE00ZZZ00000000002";"MANDAT-0002";"";"";"";"";"Stadtwerke Muster GmbH";"DE99000000000000900001";"TESTDEXX900";"-85,00";"EUR";"Umsatz vorgemerkt";"Wohnen und Garten"
+"DE00000000000000000001";"29.09.26";"29.09.26";"ONLINE-UEBERWEISUNG";"Miete Oktober; Whg. 3
+Musterstraße 1";"";"";"";"";"";"";"Vermieter Müller-Größe";"DE99000000000000900002";"TESTDEXX900";"-750,00";"EUR";"Umsatz gebucht";"Wohnen und Garten"
+"DE00000000000000000001";"28.09.26";"28.09.26";"GUTSCHR. UEBERWEISUNG";"Rückerstattung Übernachtung ""Hotel Ä""";"";"";"";"";"";"";"Gegenpartei Ölmühle";"DE99000000000000900003";"TESTDEXX900";"1.234,56";"EUR";"Umsatz gebucht";"Reisen"
+"DE00000000000000000001";"27.09.26";"27.09.26";"DIG. KARTE (APPLE PAY)";"Bäckerei Muster";"";"";"";"";"";"";"Bäckerei Muster";"";"TESTDEXX900";"-2,50";"EUR";"Umsatz gebucht";"Lebensmittel und Drogerie"
+"DE00000000000000000001";"27.09.26";"27.09.26";"DIG. KARTE (APPLE PAY)";"Bäckerei Muster";"";"";"";"";"";"";"Bäckerei Muster";"";"TESTDEXX900";"-2,50";"EUR";"Umsatz gebucht";"Lebensmittel und Drogerie"
+"DE00000000000000000001";"26.09.26";"26.09.26";"LS WIEDERGUTSCHRIFT";"Rueckgabe Lastschrift";"DE00ZZZ00000000001";"MANDAT-0001";"";"";"";"";"Paypal Muster GmbH";"DE99000000000000900004";"TESTDEXX900";"36,43";"EUR";"Umsatz gebucht";"Einkäufe"
+"DE00000000000000000001";"25.09.26";"25.09.26";"UEBERTRAG (UEBERWEISUNG)";"Uebertrag auf Tagesgeld";"";"";"";"";"";"";"Max Muster";"DE99000000000000900005";"TESTDEXX900";"-200,00";"EUR";"Umsatz gebucht";"Geldanlage"
+"DE00000000000000000001";"24.09.26";"24.09.26";"ENTGELTABSCHLUSS";"Entgeltabrechnung";"";"";"";"";"";"";"";"";"TESTDEXX900";"-7,95";"EUR";"Umsatz gebucht";"Steuern und Gebühren"
