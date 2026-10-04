@@ -128,12 +128,19 @@ ein additives `Bill`-Feld, eine deaktivierte Schreibstelle in
 `database/repository.ts` und eine ergänzte Settings-Navigation.
 `DATABASE_VERSION` bleibt bei 2.
 
+Seit Phase 14B gibt es die lokalen Finanz-Entities (`Account`,
+`Transaction`, `ImportBatch`, `CategoryRule`, `SavingsGoal`) samt Stores und
+`domain/repositories/financeRepositories.ts`; `DATABASE_VERSION` ist **3**
+(siehe „Finanztracker"-Abschnitt unten).
+
 ## Domain Models
 
 Mindestens folgende Entities:
 
 `User`, `Property`, `Bill`, `BillItem`, `Category`, `CostEntry`,
-`WasteCost`, `Contract`, `Reminder`, `Document`.
+`WasteCost`, `Contract`, `Reminder`, `Document`; seit Phase 14 zusätzlich
+`Account`, `Transaction`, `ImportBatch`, `CategoryRule`, `SavingsGoal`
+(nur lokal, nicht sync-fähig).
 
 Jede persistierte Entity benötigt: `id`, `createdAt`, `updatedAt`.
 
@@ -920,6 +927,8 @@ exakt aus `backup.data` neu befüllt – auch soft-deleted Datensätze bleiben
 mit ihrem ursprünglichen `deletedAt`/`syncVersion`/ihrer `id` erhalten
 (keine Bereinigung), und Kategorien werden ebenfalls vollständig ersetzt,
 nicht mit den beim Erststart geseedeten Standardkategorien zusammengeführt.
+*(Geändert in Phase 14B: fehlende Standardkategorien werden nach dem Ersetzen
+ergänzt, und seit Format 2 sind es 17 Stores – siehe „Finanztracker“.)*
 `syncQueue` wird strukturell mit wiederhergestellt, aber nie ausgeführt
 oder angestoßen – dafür existiert ohnehin kein Consumer (siehe „Sync"
 unten). Restore ruft bewusst keine Use-Case-Funktionen wie `createContract`/
@@ -956,7 +965,9 @@ ohne passenden `documentFiles`-Eintrag wird bewusst **nicht** als Fehler
 gewertet – das ist ein bereits akzeptierter, in Phase 12B selbst getesteter
 Datenzustand, kein Zeichen für ein defektes Backup. Es findet **keine**
 automatische Formatmigration statt; eine andere `databaseVersion` wird
-abgelehnt, nie automatisch konvertiert. Dies ist bewusst keine vollständige
+abgelehnt, nie automatisch konvertiert. *(Geändert in Phase 14B: Format 1 /
+Datenbank 2 wird weiter angenommen, die fehlenden Finanz-Stores gelten als
+leer – siehe „Finanztracker“.)* Dies ist bewusst keine vollständige
 Nachbildung der fachlichen Validierungsregeln der übrigen Domain (z. B.
 Kündigungsfristlogik) – nur offensichtliche strukturelle/referenzielle
 Plausibilität.
@@ -1016,7 +1027,9 @@ holen alles mit `rev > Cursor`; der Cursor liegt je Haushalt in
 `services/sync/syncTypes.ts` (properties, bills, billItems, costEntries,
 wasteCosts, contracts, reminders, documents). Nicht synchronisiert:
 `categories` (feste Seeds), `users` (ungenutzt), `documentFiles` (eigene
-Pipeline, Phase 13F), Reminder-Intervall-Einstellungen (gerätelokal).
+Pipeline, Phase 13F), Reminder-Intervall-Einstellungen (gerätelokal) und
+alle Finanz-Stores aus Phase 14 (`accounts`, `transactions`,
+`importBatches`, `categoryRules`, `savingsGoals` – bewusst nur lokal).
 
 **Lokale Markierung**: `IndexedDBRepository.save()/delete()` schreiben in
 derselben Transaktion einen `syncQueue`-Eintrag mit deterministischem
@@ -1097,6 +1110,53 @@ gegen ein lokales Postgres mit `supabase_stubs.sql`.
 `supabase-js` wird erst bei eingerichtetem Sync nachgeladen (eigener Chunk).
 
 **Noch offen**: Dokument-Dateien (13F), Release/Zwei-Geräte-Test (13G).
+
+### Finanztracker (Phase 14, `docs/specs/`)
+
+Spec: `docs/specs/phase-14-finanztracker.md`; verbindliche Entscheidungen
+und Abweichungen davon: `docs/specs/phase-14a-entscheidungen.md`
+(freigegeben); Zielbild: `docs/specs/phase-14-konzept.jpg`. Test-Fixtures:
+`src/test/fixtures/sparkasse/` (anonymisiert, Windows-1252 mit LF,
+`.gitattributes` `-text` – nie neu speichern; echte Exporte nie
+committen).
+
+**Nur lokal**: Konten, Buchungen, Importe, Regeln und Sparziel werden nicht
+synchronisiert. Ihre Entities erweitern nur `PersistedEntity` (kein
+`deletedAt`/`syncVersion`/`userId`) und werden hart gelöscht
+(`IndexedDBSimpleRepository`, mit `saveMany`/`deleteMany` in je einer
+Transaktion). Sie stehen nicht in `SYNC_ENTITY_TYPES`, schreiben daher nie
+in die `syncQueue`, und der Haushalts-Beitritt („Ersetzen“/„Zusammenführen“)
+lässt sie unberührt (Tests in `financeRepositories.test.ts`).
+`Transaction.contractId` darf auf einen nicht mehr vorhandenen Vertrag
+zeigen (Verträge synchronisieren, Buchungen nicht) – Leser behandeln das
+als „nicht verknüpft“; am `Contract` wird nie ein Verweis auf Buchungen
+gespeichert.
+
+**Buchungsfluss**: `flowType` (`income`/`expense`/`transfer`/`saving`)
+statt `isTransfer`, mit `flowTypeSource` analog zu `categorySource`.
+`transferPairId` verknüpft Giro-Abrechnung und Kreditkarten-Lastschrift.
+
+**Datenbank v3**: rein additiver `oldVersion < 3`-Block in
+`database/database.ts` (fünf Stores; `transactions` mit eindeutigem Index
+`accountDedupe` = `[accountId, dedupeKey]`, deshalb harte Löschung). Neue
+Standardkategorien (`constants/categories.ts`) erreichen bestehende
+Installationen über `mergeDefaultCategories()` im Upgrade – fehlende werden
+ergänzt, bestehende bekommen nur ihr `group`, nichts wird umbenannt.
+`CategoryType` kennt `'income'`; `useCategories()` blendet
+Einnahme-Kategorien für die Kosten-/Abrechnungs-/Vertragsformulare aus.
+`getDatabase()` schließt bei `blocking` die eigene Verbindung, damit ein
+späteres Upgrade nicht an einem offenen Tab hängt. Migrationstest mit einer
+exakt wie Release 1.1 angelegten v2-Datenbank:
+`databaseMigration.test.ts` (`createSchema(…, upToVersion)`).
+
+**Backup/Restore**: `BACKUP_FORMAT_VERSION = 2` (Finanz-Stores sind die
+einzige Sicherung der Buchungen). Restore nimmt Format 1–2 und Datenbank
+2–3 an; `upgradeBackupData()` füllt die Finanz-Stores eines Format-1-Backups
+mit leeren Listen, `categoriesToRestore()` ergänzt fehlende
+Standardkategorien. Referenzprüfung zusätzlich für Buchung→Konto,
+Buchung→Import, Import→Konto, Regel→Kategorie (nicht Buchung→Vertrag).
+Würde ein Restore Buchungen dieses Geräts löschen, nennt die Bestätigung das
+vorher ausdrücklich (`describeBookingLoss`). Tests: `financeBackup.test.ts`.
 
 ## PWA-Regeln
 
