@@ -1,4 +1,4 @@
-import type { IDBPDatabase, IDBPTransaction, StoreNames } from 'idb'
+import type { IDBPDatabase, IDBPTransaction, IndexNames, StoreNames } from 'idb'
 import { STORE_NAMES, type KostenblickDB } from '../database/schema'
 import type { SyncableEntity, PersistedEntity } from '../domain/models/entities'
 import type { Repository, SyncableRepository } from '../domain/repositories/interfaces'
@@ -138,5 +138,27 @@ export class IndexedDBSimpleRepository<T extends PersistedEntity, K extends Stor
   async delete(id: string): Promise<void> {
     const db = await this.dbProvider()
     await db.delete(this.storeName, id)
+  }
+
+  /** All-or-nothing: one transaction, so a failing record (e.g. a unique
+   * index violation) leaves none of the batch behind. */
+  async saveMany(entities: readonly T[]): Promise<T[]> {
+    const db = await this.dbProvider()
+    const tx = db.transaction(this.storeName, 'readwrite')
+    const now = new Date().toISOString()
+    const saved = entities.map((entity) => withTimestamps(entity, now))
+    await Promise.all([...saved.map((entity) => tx.store.put(entity as never)), tx.done])
+    return saved
+  }
+
+  async deleteMany(ids: readonly string[]): Promise<void> {
+    const db = await this.dbProvider()
+    const tx = db.transaction(this.storeName, 'readwrite')
+    await Promise.all([...ids.map((id) => tx.store.delete(id as never)), tx.done])
+  }
+
+  async getAllByIndex(indexName: IndexNames<KostenblickDB, K>, value: string): Promise<T[]> {
+    const db = await this.dbProvider()
+    return (await db.getAllFromIndex(this.storeName, indexName, value as never)) as unknown as T[]
   }
 }

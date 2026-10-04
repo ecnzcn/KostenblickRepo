@@ -1,8 +1,25 @@
 import type { DBSchema } from 'idb'
-import type { Bill, BillItem, Category, Contract, CostEntry, Document, Property, Reminder, User, WasteCost, SyncQueueItem } from '../domain/models/entities'
+import type {
+  Account,
+  Bill,
+  BillItem,
+  Category,
+  CategoryRule,
+  Contract,
+  CostEntry,
+  Document,
+  ImportBatch,
+  Property,
+  Reminder,
+  SavingsGoal,
+  SyncQueueItem,
+  Transaction,
+  User,
+  WasteCost,
+} from '../domain/models/entities'
 
 export const DATABASE_NAME = 'kostenblick'
-export const DATABASE_VERSION = 2
+export const DATABASE_VERSION = 3
 
 export const STORE_NAMES = {
   users: 'users',
@@ -17,6 +34,11 @@ export const STORE_NAMES = {
   documents: 'documents',
   documentFiles: 'documentFiles',
   syncQueue: 'syncQueue',
+  accounts: 'accounts',
+  transactions: 'transactions',
+  importBatches: 'importBatches',
+  categoryRules: 'categoryRules',
+  savingsGoals: 'savingsGoals',
 } as const
 
 /** Raw bytes for a Document, kept out of the `documents` store so entity
@@ -41,4 +63,22 @@ export interface KostenblickDB extends DBSchema {
   documents: { key: string; value: Document; indexes: { userId: string; type: string; updatedAt: string; deletedAt: string } }
   documentFiles: { key: string; value: DocumentFileRecord }
   syncQueue: { key: string; value: SyncQueueItem; indexes: { entityType: string; entityId: string; queuedAt: string } }
+  accounts: { key: string; value: Account; indexes: { type: string; identifierHash: string } }
+  transactions: {
+    key: string
+    value: Transaction
+    indexes: {
+      accountId: string
+      bookingDate: string
+      categoryId: string
+      importBatchId: string
+      contractId: string
+      updatedAt: string
+      /** unique - a booking is imported at most once per account */
+      accountDedupe: [string, string]
+    }
+  }
+  importBatches: { key: string; value: ImportBatch; indexes: { accountId: string; importedAt: string } }
+  categoryRules: { key: string; value: CategoryRule; indexes: { priority: number } }
+  savingsGoals: { key: string; value: SavingsGoal }
 }
