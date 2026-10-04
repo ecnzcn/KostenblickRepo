@@ -5,8 +5,9 @@
 > verschobenen Fixtures. Geprüft gegen den Code, nicht nur gegen die Spec;
 > Zahlen zu den Fixtures sind nachgerechnet, nicht geschätzt.
 >
-> **Status: wartet auf Freigabe durch Ercan (Human Gate).** Kein
-> Produktivcode in dieser Phase.
+> **Status: freigegeben von Ercan am 04.10.2026** – alle Empfehlungen
+> O-1 bis O-10 übernommen, Konzeptbild als Zielrichtung (Abschnitt 9).
+> Kein Produktivcode in dieser Phase.
 
 ## 0. Kurzfassung
 
@@ -550,3 +551,34 @@ Vorschlag:
   (`3e42794`, Upload direkt auf `main`). Sie zu entfernen hieße, die
   Historie von `main` umzuschreiben (Force-Push). Das wurde bewusst nicht
   gemacht; die Entscheidung liegt bei Ercan.
+
+## 9. Freigabe und Zielbild
+
+**Freigabe (04.10.2026):** Ercan übernimmt alle Empfehlungen aus Abschnitt
+6 (O-1 bis O-10) unverändert. Sie gelten ab 14B als verbindlich, ebenso die
+Präzisierungen in 2.x, 4.x und 5.
+
+**Zielbild:** `docs/specs/phase-14-konzept.jpg`. Kostenblick soll sich
+konzeptionell in diese Richtung entwickeln. Zuordnung zu den Teilphasen:
+
+| Element im Konzept | Umsetzung |
+|---|---|
+| Kennzahlkarten Gesamteinnahmen, Gesamtausgaben, Saldo mit „vs. letzter Monat“ | 14G, Vergleich über `calculatePercentageChange`; Saldo nach O-5 |
+| Karte „Sparziel“ mit Fortschrittsbalken und „% erreicht“ | 14H, Formel nach O-5, 0–100 % |
+| Zeitraum-Auswahl oben rechts | 14G, Monatswähler |
+| „Ausgaben im Zeitverlauf“ (Einnahmen/Ausgaben je Tag) | 14G; echte Tageswerte, keine Glättung oder Interpolation, die mehr Genauigkeit vortäuscht |
+| Donut und Balkenliste „Ausgaben nach Kategorie“ | 14G, nach Kategorie-`group`, größte Gruppen einzeln, Rest als „Sonstiges“ |
+| „Letzte Buchungen“ mit Symbol, Kategorie, Datum, „Alle anzeigen“ | 14G, Link nach `/buchungen` |
+| „Kostenblick Tipp“ | 14H, nur regelbasiert aus echten Daten |
+| Karte „Mehr Kontrolle. Mehr Freiheit.“ | entfällt: reine Werbefloskel ohne Datenbezug (14H) |
+| Grüne Akzentfarbe, farbige Symbol-Kacheln | 14G: Akzentfarbe app-weit als ein Theme-Token auf das Grün des Konzepts umstellen, feste Farbe je Kategorie-Gruppe |
+| Mobile: Einnahmen/Ausgaben nebeneinander, Saldo darunter, Diagramm | 14G, Prüfung im iPhone-15-Pro-Viewport |
+
+**Navigation:** Das Konzept zeigt „Übersicht, Ausgaben, Einnahmen,
+Kategorien, Berichte, Ziele“. Verbindlich bleibt Entscheidung 4 (Home,
+Buchungen, Statistik, Verträge, Mehr). Die übrigen Bereiche des Konzepts
+werden darauf abgebildet:
+- „Ausgaben“/„Einnahmen“ sind Filter der Buchungsliste.
+- „Kategorien“ sind die Kategorie-Ansicht und die Regeln (14E).
+- „Ziele“ ist das Sparziel in den Einstellungen bzw. unter „Mehr“ (14H).
+- „Berichte“ ist die Statistik.
