@@ -1,6 +1,13 @@
 import { Fragment, useRef, useState } from 'react'
 import { createBackup, validateBackup } from '../../../domain/usecases/backup'
-import { evaluateBackupFile, performRestore, type BackupEvaluation, type BackupSummary } from '../../../domain/usecases/restore'
+import {
+  countLocalTransactions,
+  describeBookingLoss,
+  evaluateBackupFile,
+  performRestore,
+  type BackupEvaluation,
+  type BackupSummary,
+} from '../../../domain/usecases/restore'
 import type { KostenblickBackup } from '../../../domain/usecases/backup'
 import { formatDate } from '../../../utils/formatters'
 import { handleLocalDataRestored } from '../../../services/sync/syncService'
@@ -10,7 +17,7 @@ type ExportStatus = { kind: 'idle' } | { kind: 'exporting' } | { kind: 'success'
 type RestoreState =
   | { kind: 'idle' }
   | { kind: 'error'; message: string }
-  | { kind: 'confirm'; backup: KostenblickBackup; summary: BackupSummary }
+  | { kind: 'confirm'; backup: KostenblickBackup; summary: BackupSummary; bookingLoss: string | null }
   | { kind: 'restoring' }
   | { kind: 'success' }
 
@@ -41,6 +48,8 @@ const SUMMARY_ROWS: { key: keyof BackupSummary['counts']; label: string }[] = [
   { key: 'reminders', label: 'Erinnerungen' },
   { key: 'documents', label: 'Dokumente' },
   { key: 'documentFiles', label: 'Dateien' },
+  { key: 'accounts', label: 'Konten' },
+  { key: 'transactions', label: 'Buchungen' },
 ]
 
 /**
@@ -94,7 +103,8 @@ export function BackupSettings() {
       const text = await file.text()
       const evaluation = evaluateBackupFile(text)
       if (evaluation.status === 'ok') {
-        setRestoreState({ kind: 'confirm', backup: evaluation.backup, summary: evaluation.summary })
+        const bookingLoss = describeBookingLoss(evaluation.summary.counts.transactions, await countLocalTransactions())
+        setRestoreState({ kind: 'confirm', backup: evaluation.backup, summary: evaluation.summary, bookingLoss })
       } else {
         setRestoreState({ kind: 'error', message: describeInvalidEvaluation(evaluation) })
       }
@@ -200,6 +210,11 @@ export function BackupSettings() {
               </Fragment>
             ))}
           </dl>
+          {restoreState.bookingLoss ? (
+            <p className="mt-3 text-sm font-semibold text-red-700" role="alert">
+              {restoreState.bookingLoss} Erstelle vorher ein Backup, wenn du sie behalten möchtest.
+            </p>
+          ) : null}
           <p className="mt-3 text-sm font-semibold text-red-700">
             Backup wiederherstellen? Dabei werden die aktuell in Kostenblick gespeicherten Daten durch den Inhalt
             dieses Backups ersetzt. Dieser Vorgang kann nicht automatisch rückgängig gemacht werden.

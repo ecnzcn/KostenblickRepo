@@ -21,6 +21,11 @@ const emptyData: KostenblickBackupData = {
   documents: [],
   documentFiles: [],
   syncQueue: [],
+  accounts: [],
+  transactions: [],
+  importBatches: [],
+  categoryRules: [],
+  savingsGoals: [],
 }
 
 function bill(overrides: Partial<KostenblickBackupData['bills'][number]> = {}) {

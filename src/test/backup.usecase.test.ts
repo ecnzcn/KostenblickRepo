@@ -16,6 +16,11 @@ const emptyData: KostenblickBackupData = {
   documents: [],
   documentFiles: [],
   syncQueue: [],
+  accounts: [],
+  transactions: [],
+  importBatches: [],
+  categoryRules: [],
+  savingsGoals: [],
 }
 
 describe('buildBackup', () => {
@@ -46,6 +51,11 @@ describe('buildBackup', () => {
         'syncQueue',
         'users',
         'wasteCosts',
+        'accounts',
+        'transactions',
+        'importBatches',
+        'categoryRules',
+        'savingsGoals',
       ].sort(),
     )
   })

@@ -6,6 +6,7 @@ import { APP_VERSION } from '../../constants/appVersion'
 import { deleteDatabase } from '../../database/database'
 import { DATABASE_VERSION } from '../../database/schema'
 import { billRepository, wasteCostRepository } from '../../domain/repositories/indexedDbRepositories'
+import { transactionRepository } from '../../domain/repositories/financeRepositories'
 import { buildBackup, type KostenblickBackupData } from '../../domain/usecases/backup'
 import { createContract } from '../../domain/usecases/contracts'
 import { getEnabledReminderOffsets } from '../../domain/usecases/reminders/reminderSettings'
@@ -25,6 +26,11 @@ const emptyBackupData: KostenblickBackupData = {
   documents: [],
   documentFiles: [],
   syncQueue: [],
+  accounts: [],
+  transactions: [],
+  importBatches: [],
+  categoryRules: [],
+  savingsGoals: [],
 }
 
 function getRestoreFileInput(): HTMLInputElement {
@@ -243,6 +249,42 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('Dieses Backup enthält:')).not.toBeInTheDocument()
     expect(getRestoreFileInput()).toBeInTheDocument()
     expect((await wasteCostRepository.getAllIncludingDeleted()).map((w) => w.id)).toEqual([existing.id])
+  })
+
+  it('warns before an older backup without bookings would delete the bookings on this device', async () => {
+    await transactionRepository.save({
+      id: 'tx-1',
+      accountId: 'account-1',
+      bookingDate: '2026-09-01',
+      amount: -12,
+      currency: 'EUR',
+      counterpartyName: 'Rewe',
+      purpose: '',
+      bookingText: 'KARTENZAHLUNG',
+      categorySource: 'none',
+      flowType: 'expense',
+      flowTypeSource: 'auto',
+      importBatchId: 'batch-1',
+      dedupeKey: 'k:0',
+      createdAt: '',
+      updatedAt: '',
+    })
+    const { accounts: _a, transactions: _t, importBatches: _i, categoryRules: _c, savingsGoals: _s, ...v1Data } = emptyBackupData
+    const releaseOneOne = { ...buildBackup(emptyBackupData), formatVersion: 1, databaseVersion: 2, data: v1Data }
+
+    renderPage()
+    selectBackupFile(JSON.stringify(releaseOneOne))
+
+    expect(
+      await screen.findByText(/Dieses Backup enthält keine Buchungen\. Die 1 Buchung auf diesem Gerät wird gelöscht\./),
+    ).toBeInTheDocument()
+  })
+
+  it('shows no booking warning when this device has no bookings', async () => {
+    renderPage()
+    selectBackupFile(JSON.stringify(buildBackup(emptyBackupData)))
+    await waitFor(() => expect(screen.getByText('Dieses Backup enthält:')).toBeInTheDocument())
+    expect(screen.queryByText(/Buchungen auf diesem Gerät/)).not.toBeInTheDocument()
   })
 
   it('confirming replaces existing data with the backup and shows a success message', async () => {
