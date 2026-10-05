@@ -73,7 +73,11 @@ export function DashboardPage() {
                 Buchungen →
               </Link>
             </div>
-            {finance.overview ? <FinanceSection overview={finance.overview} /> : <FinanceEmptyState />}
+            {finance.overview ? (
+              <FinanceSection overview={finance.overview} savingsProgress={finance.savingsProgress} tips={finance.tips} />
+            ) : (
+              <FinanceEmptyState />
+            )}
           </section>
 
           <section aria-labelledby="household-title" className="flex flex-col gap-4">

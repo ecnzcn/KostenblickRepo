@@ -10,6 +10,7 @@ import { transactionRepository } from '../../domain/repositories/financeReposito
 import { buildBackup, type KostenblickBackupData } from '../../domain/usecases/backup'
 import { createContract } from '../../domain/usecases/contracts'
 import { getEnabledReminderOffsets } from '../../domain/usecases/reminders/reminderSettings'
+import { getSavingsGoal, saveSavingsGoal } from '../../domain/usecases/finance/savingsGoal'
 import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
 import { generateId } from '../../utils/id'
 
@@ -54,6 +55,35 @@ function renderPage() {
     </HashRouter>,
   )
 }
+
+describe('Sparziel', () => {
+  it('saves, changes and removes the monthly goal with German amounts', async () => {
+    renderPage()
+    const input = await screen.findByLabelText('Monatsziel in €')
+    await waitFor(() => expect(input).toBeEnabled())
+
+    fireEvent.change(input, { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sparziel speichern' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das Sparziel muss größer als 0 € sein.')
+    expect(await getSavingsGoal()).toBeUndefined()
+
+    fireEvent.change(input, { target: { value: '450,50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sparziel speichern' }))
+    expect(await screen.findByText(/Sparziel gespeichert: 450,50/)).toBeInTheDocument()
+    expect((await getSavingsGoal())?.monthlyTarget).toBe(450.5)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sparziel entfernen' }))
+    expect(await screen.findByText('Sparziel entfernt.')).toBeInTheDocument()
+    expect(await getSavingsGoal()).toBeUndefined()
+  })
+
+  it('shows an existing goal', async () => {
+    await saveSavingsGoal(500)
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Monatsziel in €')).toHaveValue('500'))
+    expect(screen.getByRole('button', { name: 'Sparziel entfernen' })).toBeInTheDocument()
+  })
+})
 
 describe('SettingsPage', () => {
   it('links "Erinnerungen" to the reminders page', () => {

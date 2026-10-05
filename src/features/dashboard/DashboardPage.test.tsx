@@ -119,11 +119,12 @@ const financeData: FinanceData = {
   transactions,
   categories: DEFAULT_CATEGORIES,
   batches: [batch],
+  contracts: [],
   months: ['2026-08', '2026-07'],
   defaultMonth: '2026-08',
 }
 
-const noFinanceData: FinanceData = { transactions: [], categories: DEFAULT_CATEGORIES, batches: [], months: [] }
+const noFinanceData: FinanceData = { transactions: [], categories: DEFAULT_CATEGORIES, batches: [], contracts: [], months: [] }
 
 describe('DashboardPage', () => {
   beforeEach(() => {
@@ -168,8 +169,64 @@ describe('DashboardPage', () => {
     expect(groups.getByText('Ohne Kategorie')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Edeka/ })).toHaveAttribute('href', '#/buchungen/a3')
     expect(screen.getByRole('link', { name: 'Alle anzeigen' })).toHaveAttribute('href', '#/buchungen?monat=2026-08')
-    expect(screen.getByText(/1 Buchung ist noch ohne Kategorie/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Zuordnen' })).toHaveAttribute('href', '#/buchungen?monat=2026-08&kategorie=ohne')
+  })
+
+  it('shows rule-based tips from the month, e.g. bookings without category', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    const tips = within(screen.getByRole('region', { name: 'Kostenblick-Tipps' }))
+    expect(tips.getByText(/1 Buchung ist im August 2026 noch ohne Kategorie/)).toBeInTheDocument()
+    expect(tips.getByText(/25 % weniger für Wohnen ausgegeben als im Juli 2026/)).toBeInTheDocument()
+    expect(tips.getByRole('link', { name: 'Zuordnen' })).toHaveAttribute('href', '#/buchungen?monat=2026-08&kategorie=ohne')
+  })
+
+  it('shows no tip card when no rule applies', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    // July: everything categorized, no previous month, no contracts - no basis for a tip.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '2026-07' } })
+    expect(screen.queryByRole('region', { name: /Kostenblick-Tipp/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the savings goal progress (O-5) or invites to set one', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    getFinanceDataMock.mockResolvedValue({ ...financeData, savingsGoal: { id: 'monthly', monthlyTarget: 2500, createdAt: '', updatedAt: '' } })
+    renderPage()
+    await waitForLoadingToFinish()
+
+    // (Saldo 1.731,68 + Gespart 300) / 2.500 = 81,3 %
+    const goal = within(screen.getByRole('region', { name: 'Sparziel' }))
+    expect(goal.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '81')
+    expect(goal.getByText('81 % erreicht')).toBeInTheDocument()
+    expect(goal.getByText(`${money(2031.68)} von ${money(2500)} übrig und gespart.`)).toBeInTheDocument()
+  })
+
+  it('names a month with more spent than earned and shows 0 %', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    getFinanceDataMock.mockResolvedValue({
+      ...financeData,
+      transactions: [...transactions, booking('a6', '2026-08-25', -3000, { categoryId: 'shopping' })],
+      savingsGoal: { id: 'monthly', monthlyTarget: 500, createdAt: '', updatedAt: '' },
+    })
+    renderPage()
+    await waitForLoadingToFinish()
+
+    const goal = within(screen.getByRole('region', { name: 'Sparziel' }))
+    expect(goal.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
+    // 2.850 − 3.818,32 = −968,32
+    expect(goal.getByText(`In diesem Monat wurde ${money(968.32)} mehr ausgegeben als eingenommen.`)).toBeInTheDocument()
+  })
+
+  it('without a savings goal links to the settings', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByRole('link', { name: 'Sparziel festlegen' })).toHaveAttribute('href', '#/mehr')
   })
 
   it('switches the month without reloading', async () => {

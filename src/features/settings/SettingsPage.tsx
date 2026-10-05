@@ -5,6 +5,7 @@ import { ROUTES } from '../../constants/navigation'
 import { BackupSettings } from './components/BackupSettings'
 import { NotificationSettings } from './components/NotificationSettings'
 import { ReminderIntervalSettings } from './components/ReminderIntervalSettings'
+import { SavingsGoalSettings } from './components/SavingsGoalSettings'
 import { SyncSettings } from './components/SyncSettings'
 
 export function SettingsPage() {
@@ -50,6 +51,7 @@ export function SettingsPage() {
           </li>
         </ul>
 
+        <SavingsGoalSettings />
         <ReminderIntervalSettings />
         <NotificationSettings />
         <SyncSettings />
