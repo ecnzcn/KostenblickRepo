@@ -33,8 +33,14 @@ export const ROUTES = {
   costOverview: '/kostenuebersicht',
   transactions: '/buchungen',
   transactionsImport: '/buchungen/import',
+  transactionDetailPattern: '/buchungen/:id',
+  categoryRules: '/regeln',
   settings: '/mehr',
 } as const
+
+export function transactionDetailPath(id: string): string {
+  return `/buchungen/${id}`
+}
 
 export function billDetailPath(id: string): string {
   return `/abrechnungen/${id}`

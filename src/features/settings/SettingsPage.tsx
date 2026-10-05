@@ -19,6 +19,11 @@ export function SettingsPage() {
             </Link>
           </li>
           <li>
+            <Link to={ROUTES.categoryRules} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
+              Kategorieregeln
+            </Link>
+          </li>
+          <li>
             <Link to={ROUTES.costOverview} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
               Kostenübersicht
             </Link>

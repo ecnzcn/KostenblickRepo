@@ -23,6 +23,8 @@ import { SettingsPage } from '../features/settings/SettingsPage'
 import { StatisticsPage } from '../features/statistics/StatisticsPage'
 import { ImportTransactionsPage } from '../features/transactions/import/ImportTransactionsPage'
 import { TransactionsPage } from '../features/transactions/TransactionsPage'
+import { TransactionDetailPage } from '../features/transactions/TransactionDetailPage'
+import { CategoryRulesPage } from '../features/transactions/CategoryRulesPage'
 import { WasteCostDetailPage } from '../features/waste/WasteCostDetailPage'
 import { WasteCostFormPage } from '../features/waste/WasteCostFormPage'
 import { WasteCostsPage } from '../features/waste/WasteCostsPage'
@@ -50,6 +52,8 @@ export function App() {
 
           <Route path={ROUTES.transactions} element={<TransactionsPage />} />
           <Route path={ROUTES.transactionsImport} element={<ImportTransactionsPage />} />
+          <Route path={ROUTES.transactionDetailPattern} element={<TransactionDetailPage />} />
+          <Route path={ROUTES.categoryRules} element={<CategoryRulesPage />} />
 
           <Route path={ROUTES.bills} element={<BillsPage />} />
           <Route path={ROUTES.billsNew} element={<BillFormPage mode="create" />} />

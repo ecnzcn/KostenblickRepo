@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 import { ErrorState } from '../../components/ErrorState'
 import { LoadingState } from '../../components/LoadingState'
 import { PageHeader } from '../../components/layout/PageHeader'
-import { ROUTES } from '../../constants/navigation'
+import { ROUTES, transactionDetailPath } from '../../constants/navigation'
 import { undoImport, type ImportHistoryEntry } from '../../domain/usecases/bankImport/importTransactions'
-import { formatDate } from '../../utils/formatters'
+import { formatCurrency, formatDate } from '../../utils/formatters'
 import { useImportOverview } from './useImportOverview'
 
 const PRIMARY = 'inline-flex min-h-11 items-center justify-center rounded-full bg-accent px-5 text-sm font-medium text-white'
@@ -99,6 +99,32 @@ export function TransactionsPage() {
             Bitte die aktuelle Kreditkarten-CSV importieren. Bis dahin zählt die Abrechnung nicht als Ausgabe, damit
             bereits importierte Kartenumsätze nicht doppelt zählen.
           </p>
+        ) : null}
+
+        {overview.uncategorized.length > 0 ? (
+          <section className="rounded-2xl border border-neutral-200 bg-white">
+            <h2 className="px-4 pt-4 text-sm font-semibold text-neutral-900">
+              Ohne Kategorie <span className="font-normal text-neutral-500">· {overview.uncategorized.length}</span>
+            </h2>
+            <p className="px-4 text-xs text-neutral-500">Tippe eine Buchung an, um sie zuzuordnen.</p>
+            <ul className="mt-2 divide-y divide-neutral-200">
+              {overview.uncategorized.map((transaction) => (
+                <li key={transaction.id}>
+                  <Link to={transactionDetailPath(transaction.id)} className="flex min-h-11 items-center justify-between gap-3 px-4 py-3">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm text-neutral-900">
+                        {transaction.counterpartyName || transaction.bookingText || 'Buchung'}
+                      </span>
+                      <span className="block text-xs text-neutral-500">{formatDate(transaction.bookingDate)}</span>
+                    </span>
+                    <span className={`shrink-0 text-sm font-medium tabular-nums ${transaction.amount < 0 ? 'text-neutral-900' : 'text-emerald-700'}`}>
+                      {formatCurrency(transaction.amount)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : null}
 
         {overview.imports.length === 0 ? (
