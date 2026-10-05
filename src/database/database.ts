@@ -1,10 +1,21 @@
-import { deleteDB, openDB, type IDBPDatabase } from 'idb'
+import { deleteDB, openDB, type IDBPDatabase, type IDBPTransaction, type StoreNames } from 'idb'
 import { DATABASE_NAME, DATABASE_VERSION, STORE_NAMES, type KostenblickDB } from './schema'
-import { DEFAULT_CATEGORIES } from '../constants/categories'
+import { DEFAULT_CATEGORIES, mergeDefaultCategories } from '../constants/categories'
 
 let databasePromise: Promise<IDBPDatabase<KostenblickDB>> | undefined
 
-function createSchema(db: IDBPDatabase<KostenblickDB>, oldVersion: number): void {
+type UpgradeTransaction = IDBPTransaction<KostenblickDB, StoreNames<KostenblickDB>[], 'versionchange'>
+
+/**
+ * Additive, per-version migration. `upToVersion` exists so tests can build a
+ * database exactly as an older release left it and then upgrade it.
+ */
+export function createSchema(
+  db: IDBPDatabase<KostenblickDB>,
+  oldVersion: number,
+  tx: UpgradeTransaction,
+  upToVersion: number = DATABASE_VERSION,
+): void {
   if (oldVersion < 1) {
     const users = db.createObjectStore(STORE_NAMES.users, { keyPath: 'id' })
     users.createIndex('userId', 'id')
@@ -79,15 +90,53 @@ function createSchema(db: IDBPDatabase<KostenblickDB>, oldVersion: number): void
     }
   }
 
-  if (oldVersion < 2) {
+  if (oldVersion < 2 && upToVersion >= 2) {
     db.createObjectStore(STORE_NAMES.documentFiles, { keyPath: 'id' })
+  }
+
+  if (oldVersion < 3 && upToVersion >= 3) {
+    const accounts = db.createObjectStore(STORE_NAMES.accounts, { keyPath: 'id' })
+    accounts.createIndex('type', 'type')
+    accounts.createIndex('identifierHash', 'identifierHash')
+
+    const transactions = db.createObjectStore(STORE_NAMES.transactions, { keyPath: 'id' })
+    transactions.createIndex('accountId', 'accountId')
+    transactions.createIndex('bookingDate', 'bookingDate')
+    transactions.createIndex('categoryId', 'categoryId')
+    transactions.createIndex('importBatchId', 'importBatchId')
+    transactions.createIndex('contractId', 'contractId')
+    transactions.createIndex('updatedAt', 'updatedAt')
+    transactions.createIndex('accountDedupe', ['accountId', 'dedupeKey'], { unique: true })
+
+    const importBatches = db.createObjectStore(STORE_NAMES.importBatches, { keyPath: 'id' })
+    importBatches.createIndex('accountId', 'accountId')
+    importBatches.createIndex('importedAt', 'importedAt')
+
+    const categoryRules = db.createObjectStore(STORE_NAMES.categoryRules, { keyPath: 'id' })
+    categoryRules.createIndex('priority', 'priority')
+
+    db.createObjectStore(STORE_NAMES.savingsGoals, { keyPath: 'id' })
+
+    // A fresh database was already seeded with the full set above; an
+    // existing one only has the pre-Phase-14 defaults.
+    if (oldVersion >= 1) {
+      const categories = tx.objectStore(STORE_NAMES.categories)
+      void categories.getAll().then((existing) => {
+        for (const category of mergeDefaultCategories(existing)) void categories.put(category)
+      })
+    }
   }
 }
 
 export function getDatabase(): Promise<IDBPDatabase<KostenblickDB>> {
   databasePromise ??= openDB<KostenblickDB>(DATABASE_NAME, DATABASE_VERSION, {
-    upgrade(db, oldVersion) {
-      createSchema(db, oldVersion)
+    upgrade(db, oldVersion, _newVersion, tx) {
+      createSchema(db, oldVersion, tx)
+    },
+    // A newer release opening the database must not hang behind this
+    // connection: close it and let the next getDatabase() reopen.
+    blocking() {
+      void closeDatabase()
     },
   })
   return databasePromise

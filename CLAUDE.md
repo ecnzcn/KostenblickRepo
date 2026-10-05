@@ -128,12 +128,20 @@ ein additives `Bill`-Feld, eine deaktivierte Schreibstelle in
 `database/repository.ts` und eine ergänzte Settings-Navigation.
 `DATABASE_VERSION` bleibt bei 2.
 
+Seit Phase 14B gibt es die lokalen Finanz-Entities (`Account`,
+`Transaction`, `ImportBatch`, `CategoryRule`, `SavingsGoal`) samt Stores und
+`domain/repositories/financeRepositories.ts`; `DATABASE_VERSION` ist **3**
+(siehe „Finanztracker"-Abschnitt unten). Seit Phase 14D liegen der
+Buchungs-Import und die Buchungsseite unter `features/transactions/`.
+
 ## Domain Models
 
 Mindestens folgende Entities:
 
 `User`, `Property`, `Bill`, `BillItem`, `Category`, `CostEntry`,
-`WasteCost`, `Contract`, `Reminder`, `Document`.
+`WasteCost`, `Contract`, `Reminder`, `Document`; seit Phase 14 zusätzlich
+`Account`, `Transaction`, `ImportBatch`, `CategoryRule`, `SavingsGoal`
+(nur lokal, nicht sync-fähig).
 
 Jede persistierte Entity benötigt: `id`, `createdAt`, `updatedAt`.
 
@@ -665,6 +673,8 @@ ausschließlich `getWasteCostSummary()` – keine eigene Berechnungslogik im
 Dashboard-Code. `getDashboardData()` lädt `wasteCostRepository.getAll()`
 zusätzlich zu den bestehenden Repositories und reicht das Ergebnis nur
 durch; die `CostEntry`-basierte Dashboard-Pipeline bleibt unangetastet.
+*(Überholt seit Phase 14G: die Karte ist vom Dashboard entfernt, Müllkosten
+stehen auf `/muell` und in der Kostenübersicht.)*
 
 **Statistik-Integration**: bewusst (noch) nicht vorgenommen. Die
 Statistik-Pipeline (Phase 5) liest bewusst ausschließlich aus
@@ -769,6 +779,9 @@ Unallocated-Hinweis (`CostOverviewMonthlyChart`) und Kategorieaufschlüsselung
 „Kostenübersicht →"-Link direkt über den Kosten-Karten auf dem Dashboard –
 bewusst **nicht** in der fünfteiligen Bottom-Nav/Sidebar (Home, Statistik,
 Abrechnungen, Verträge, Mehr bleibt unverändert).
+*(Seit Phase 14G zeigt das Dashboard keine Werte dieser Projektion mehr –
+siehe „Dashboard (Phase 14G)“ im Finanztracker-Abschnitt. Die
+Kostenübersicht ist unverändert die Ansicht der „erfassten Kosten“.)*
 
 **Dashboard-Integration**: `getDashboardData()`
 (`domain/usecases/dashboard.ts`) berechnet `currentMonthCost`/
@@ -783,7 +796,9 @@ nicht mehr aufgerufen. Die bestehende `WasteCostsSummaryCard` bleibt
 erhalten (kein Rückbau einer funktionierenden, getesteten Karte), bekommt
 aber den Hinweis „Bereits in den Jahreskosten oben enthalten.", damit nie
 der Eindruck entsteht, die dort gezeigte Müllkosten-Zahl käme zur
-Jahreskosten-Kachel addiert obendrauf.
+Jahreskosten-Kachel addiert obendrauf. *(Überholt seit Phase 14G: das
+Dashboard rechnet nur noch mit Buchungen, `getDashboardData()` liefert
+keine dieser Kostenwerte mehr – siehe „Dashboard (Phase 14G)“.)*
 
 **Statistik-Integration**: bewusst **nicht** vorgenommen. `/statistik`
 liest weiterhin ausschließlich aus `billRepository`/`billItemRepository`
@@ -920,6 +935,8 @@ exakt aus `backup.data` neu befüllt – auch soft-deleted Datensätze bleiben
 mit ihrem ursprünglichen `deletedAt`/`syncVersion`/ihrer `id` erhalten
 (keine Bereinigung), und Kategorien werden ebenfalls vollständig ersetzt,
 nicht mit den beim Erststart geseedeten Standardkategorien zusammengeführt.
+*(Geändert in Phase 14B: fehlende Standardkategorien werden nach dem Ersetzen
+ergänzt, und seit Format 2 sind es 17 Stores – siehe „Finanztracker“.)*
 `syncQueue` wird strukturell mit wiederhergestellt, aber nie ausgeführt
 oder angestoßen – dafür existiert ohnehin kein Consumer (siehe „Sync"
 unten). Restore ruft bewusst keine Use-Case-Funktionen wie `createContract`/
@@ -956,7 +973,9 @@ ohne passenden `documentFiles`-Eintrag wird bewusst **nicht** als Fehler
 gewertet – das ist ein bereits akzeptierter, in Phase 12B selbst getesteter
 Datenzustand, kein Zeichen für ein defektes Backup. Es findet **keine**
 automatische Formatmigration statt; eine andere `databaseVersion` wird
-abgelehnt, nie automatisch konvertiert. Dies ist bewusst keine vollständige
+abgelehnt, nie automatisch konvertiert. *(Geändert in Phase 14B: Format 1 /
+Datenbank 2 wird weiter angenommen, die fehlenden Finanz-Stores gelten als
+leer – siehe „Finanztracker“.)* Dies ist bewusst keine vollständige
 Nachbildung der fachlichen Validierungsregeln der übrigen Domain (z. B.
 Kündigungsfristlogik) – nur offensichtliche strukturelle/referenzielle
 Plausibilität.
@@ -1016,7 +1035,9 @@ holen alles mit `rev > Cursor`; der Cursor liegt je Haushalt in
 `services/sync/syncTypes.ts` (properties, bills, billItems, costEntries,
 wasteCosts, contracts, reminders, documents). Nicht synchronisiert:
 `categories` (feste Seeds), `users` (ungenutzt), `documentFiles` (eigene
-Pipeline, Phase 13F), Reminder-Intervall-Einstellungen (gerätelokal).
+Pipeline, Phase 13F), Reminder-Intervall-Einstellungen (gerätelokal) und
+alle Finanz-Stores aus Phase 14 (`accounts`, `transactions`,
+`importBatches`, `categoryRules`, `savingsGoals` – bewusst nur lokal).
 
 **Lokale Markierung**: `IndexedDBRepository.save()/delete()` schreiben in
 derselben Transaktion einen `syncQueue`-Eintrag mit deterministischem
@@ -1098,6 +1119,306 @@ gegen ein lokales Postgres mit `supabase_stubs.sql`.
 
 **Noch offen**: Dokument-Dateien (13F), Release/Zwei-Geräte-Test (13G).
 
+### Finanztracker (Phase 14, `docs/specs/`)
+
+Spec: `docs/specs/phase-14-finanztracker.md`; verbindliche Entscheidungen
+und Abweichungen davon: `docs/specs/phase-14a-entscheidungen.md`
+(freigegeben); Zielbild: `docs/specs/phase-14-konzept.jpg`. Test-Fixtures:
+`src/test/fixtures/sparkasse/` (anonymisiert, Windows-1252 mit LF,
+`.gitattributes` `-text` – nie neu speichern; echte Exporte nie
+committen).
+
+**Kernregel E7 (keine Doppelzählung)**: Die Geldwerte des Dashboards
+kommen **ausschließlich aus Buchungen** (`Transaction`). Vertragswerte sind
+ein Soll und werden nie zu Ausgaben addiert; Abrechnungen, Müllkosten und
+manuelle `CostEntry` bleiben in Abrechnungen, Nebenkosten-Statistik und
+Kostenübersicht („erfasste Kosten“) und erscheinen nicht als Ausgabe im
+Dashboard – vom Konto bezahlt tauchen sie dort bereits als Buchung auf.
+`/statistik` heißt seit 14I „Nebenkosten-Statistik“ (O-9), der
+Navigationspunkt bleibt „Statistik“. Release: V1.2.0 (`RELEASE.md`),
+iPhone-Testanleitung `docs/IPHONE_TEST_1.2.md`.
+
+**Nur lokal**: Konten, Buchungen, Importe, Regeln und Sparziel werden nicht
+synchronisiert. Ihre Entities erweitern nur `PersistedEntity` (kein
+`deletedAt`/`syncVersion`/`userId`) und werden hart gelöscht
+(`IndexedDBSimpleRepository`, mit `saveMany`/`deleteMany` in je einer
+Transaktion). Sie stehen nicht in `SYNC_ENTITY_TYPES`, schreiben daher nie
+in die `syncQueue`, und der Haushalts-Beitritt („Ersetzen“/„Zusammenführen“)
+lässt sie unberührt (Tests in `financeRepositories.test.ts`).
+`Transaction.contractId` darf auf einen nicht mehr vorhandenen Vertrag
+zeigen (Verträge synchronisieren, Buchungen nicht) – Leser behandeln das
+als „nicht verknüpft“; am `Contract` wird nie ein Verweis auf Buchungen
+gespeichert.
+
+**Buchungsfluss**: `flowType` (`income`/`expense`/`transfer`/`saving`)
+statt `isTransfer`, mit `flowTypeSource` analog zu `categorySource`.
+`transferPairId` verknüpft Giro-Abrechnung und Kreditkarten-Lastschrift.
+
+**Datenbank v3**: rein additiver `oldVersion < 3`-Block in
+`database/database.ts` (fünf Stores; `transactions` mit eindeutigem Index
+`accountDedupe` = `[accountId, dedupeKey]`, deshalb harte Löschung). Neue
+Standardkategorien (`constants/categories.ts`) erreichen bestehende
+Installationen über `mergeDefaultCategories()` im Upgrade – fehlende werden
+ergänzt, bestehende bekommen nur ihr `group`, nichts wird umbenannt.
+`CategoryType` kennt `'income'`; `useCategories()` blendet
+Einnahme-Kategorien für die Kosten-/Abrechnungs-/Vertragsformulare aus.
+`getDatabase()` schließt bei `blocking` die eigene Verbindung, damit ein
+späteres Upgrade nicht an einem offenen Tab hängt. Migrationstest mit einer
+exakt wie Release 1.1 angelegten v2-Datenbank:
+`databaseMigration.test.ts` (`createSchema(…, upToVersion)`).
+
+**Backup/Restore**: `BACKUP_FORMAT_VERSION = 2` (Finanz-Stores sind die
+einzige Sicherung der Buchungen). Restore nimmt Format 1–2 und Datenbank
+2–3 an; `upgradeBackupData()` füllt die Finanz-Stores eines Format-1-Backups
+mit leeren Listen, `categoriesToRestore()` ergänzt fehlende
+Standardkategorien. Referenzprüfung zusätzlich für Buchung→Konto,
+Buchung→Import, Import→Konto, Regel→Kategorie (nicht Buchung→Vertrag).
+Würde ein Restore Buchungen dieses Geräts löschen, nennt die Bestätigung das
+vorher ausdrücklich (`describeBookingLoss`). Tests: `financeBackup.test.ts`.
+
+**CSV-Parser (Phase 14C, `domain/usecases/bankImport/`)**: reine Funktionen,
+kein IndexedDB, kein Netzwerk. `decodeBankFile()` liest Bytes strikt als
+UTF-8 (z. B. aus Numbers/Excel neu gespeichert), sonst als Windows-1252
+(Sparkassen-Original). `csv.ts` ist ein eigener kleiner RFC-4180-Leser
+(`;`, `""`, Umbrüche im Feld, LF/CRLF) – keine Bibliothek.
+`parseSparkasseCsv()` erkennt Giro (CSV-CAMT V2) bzw. Kreditkarte am
+Header, ordnet Spalten **nur über den Namen** zu, lehnt fehlende
+Pflichtspalten und Dateien mit mehreren Konten komplett ab (kein
+Teilimport) und liefert pro fehlerhafter Zeile eine Meldung mit Zeile und
+Spalte, nie mit Feldinhalt. Vorgemerkte Umsätze werden nur gezählt
+(`pendingCount`). Beträge: `parseBankAmount` (striktes deutsches Format,
+nutzt `parseGermanAmount`); Umrechnungskurse: `parseExchangeRate` (nie auf
+Cent gerundet); `Originalbetrag`/`Umrechnungskurs` nur bei echter
+Fremdwährung (`0,00`/`1,00` sind Platzhalter). Kreditkartenzeilen bekommen
+einen strukturellen `bookingText` (`KARTENUMSATZ`/`LASTSCHRIFT`/`GEBUEHR`,
+`CREDIT_CARD_BOOKING_TEXT`). `computeDedupeKeys()`: SHA-256 über die
+Felder aus Spec 4/4b (JSON-Array, Verwendungszweck ohne jedes Leerzeichen
+und in Großbuchstaben) + `:n` für identische Zeilen derselben Datei;
+`planImport()` teilt gegen die vorhandenen Schlüssel in neu/doppelt und
+liefert die `ImportBatchCounts`. Kontozuordnung über
+`accountIdentity.ts` (gesalzener Hash, `findMatchingAccount`). Tests:
+`sparkasseCsv.test.ts` gegen alle fünf Fixtures, inkl. überlappender
+Exporte, UTF-8-/CRLF-Varianten und 2.340 Zeilen. Die Tests lesen die
+Fixtures per `node:fs` (nur `readFileSync` ist in `src/test/nodeFs.d.ts`
+deklariert – die App selbst hat keine Node-Typen).
+
+**Import-Flow (Phase 14D, `bankImport/importTransactions.ts`,
+`features/transactions/`)**: `/buchungen/import` läuft über Datei wählen →
+Vorschau → Speichern. `prepareImport()` liest, prüft und ordnet das Konto
+zu (gesalzener Hash; unbekanntes Konto → wird erst beim Speichern
+angelegt, Name editierbar) und baut die Vorschau (Zeitraum, neu/doppelt/
+vorgemerkt, ohne Kategorie, Einnahmen/Ausgaben/Gespart) – **schreibt
+nichts**. `commitImport()` speichert Konto, `ImportBatch`, Buchungen und
+die neu entstehenden Kartenpaare in **einer** IndexedDB-Transaktion
+(Fehler → nichts gespeichert); Vorschauen mit Zeilenfehlern oder ohne neue
+Buchungen lassen sich nicht speichern. `undoImport()` löscht die Buchungen
+einer Charge hart und verknüpft den Rest neu – derselbe Export lässt sich
+danach erneut importieren. `/buchungen` zeigt die Importe (mit
+„Import rückgängig machen“ nach Bestätigung) und den Hinweis auf fehlende
+Kartenumsätze; seit 14G steht darüber die Buchungsliste (siehe unten).
+
+**Erst-Einordnung** (`classifyBankRow`, bis 14E eigene Regeln bringt):
+Strukturregeln vor Bank-Kategorie – `EIGENE KREDITKARTENABRECHN.`/
+`KREDITKARTENABRECHNUNG` → Ausgabe „Kreditkarte (nicht aufgeschlüsselt)“,
+`UEBERTRAG…` oder Kategorie „Geldanlage“ → `saving` (beide Richtungen,
+Rückflüsse mindern „Gespart“), `LS WIEDERGUTSCHRIFT`/`WIEDERGUTSCHRIFT` →
+Ausgabe mit positivem Betrag (`isReversal`), `BARGELDEINZAHLUNG…` →
+„Sonstige Einnahmen“, `ENTGELTABSCHLUSS`/`ABSCHLUSS` → Gebühren; sonst
+entscheidet das Vorzeichen (positiv = Einnahme, O-8), die Sparkassen-
+Kategorie ist nur Startvorschlag (`SPARKASSE_CATEGORY_MAP` in
+`constants/bankCategories.ts`, `LOHN  GEHALT` → Gehalt, O-10). Eine
+Einnahme bekommt nie eine Ausgabekategorie. Kreditkarte: `LASTSCHRIFT` →
+`transfer`, Fremdwährungsgebühr → Gebühren, Kartenumsätze vorerst ohne
+Kategorie.
+
+**Kartenpaare** (`reconcileCardSettlements`, rein, nach jedem Import und
+jedem Rückgängigmachen über alle Buchungen): Giro-Abrechnung und
+Karten-„Lastschrift“ mit centgenau gleichem Betrag, Giro 0–10 Tage danach
+(`SETTLEMENT_PAIRING_WINDOW_DAYS`), nächstes Datum zuerst, 1:1 → beide
+`transfer` mit `transferPairId`. Ungepaarte Giro-Abrechnung: Ausgabe
+„Kreditkarte (nicht aufgeschlüsselt)“ – außer es gibt seit der letzten
+gepaarten Lastschrift schon Kartenumsätze, dann vorläufig `transfer`
+(`isProvisionalSettlement`, Hinweis auf `/buchungen`), damit nichts doppelt
+zählt (O-1). Ein manuell gesetzter `flowType` wird nie angefasst, eine
+manuelle Kategorie bleibt.
+
+**Backup-Erinnerung** (`domain/usecases/backupReminder.ts`): Zeitpunkt des
+letzten Backups dieses Geräts in `localStorage` (Komfortwert, gesetzt von
+„Backup exportieren“ und `downloadBackup()`); „Daten & Backup“ zeigt ihn
+und warnt, wenn seitdem Buchungen importiert wurden, plus Hinweis, dass
+das Backup Kontoumsätze enthält. Nach jedem Import fragt die Seite
+„Backup erstellen?“ (Button lädt direkt herunter, „Später“ blendet aus).
+
+**Kategorisierung (Phase 14E, `domain/usecases/categorization/`)**:
+`categorizeTransaction()` ist die eine, reine Regel-Engine – Reihenfolge:
+manuell → verknüpfter Vertrag (`Transaction.contractId`, fehlender Vertrag
+wird ignoriert) → eigene Regeln (höchste `priority` zuerst) →
+Strukturregeln aus `classifyBankRow` → Standardregeln
+(`constants/standardCategoryRules.ts`: wenige eindeutige Händlernamen als
+ganzes Wort, bei Kreditkarten der Händlerkategorie-Code `merchantCategoryCode`
+aus „Gebührenschlüssel“) → Sparkassen-Kategorie → keine. Eine manuelle
+Kategorie oder ein manueller `flowType` wird **nie** geändert
+(`recategorize()` liefert sie unverändert zurück). Kategorie und Fluss
+gehören zusammen: eine Einnahme-Kategorie heißt Einnahme, eine
+Ausgabe-Kategorie Ausgabe (positive Buchung = Erstattung, O-8), „Sparen“
+heißt `saving`. Giro-Kartenabrechnungen und Karten-Lastschriften
+überlässt die Engine `reconcileCardSettlements`. Der Import kategorisiert
+neue Buchungen schon mit den gespeicherten Regeln.
+
+Manuell (`transactionCategorization.ts`): `setTransactionAssignment()`
+speichert die Wahl aus **einem** Auswahlfeld (Kategorie / Sparen /
+Umbuchung / ohne Kategorie) als `manual` und verknüpft die Kartenpaare neu.
+Danach fragt die Detailseite „Immer so zuordnen?“ (`RulePrompt`):
+Vorschläge vom genauesten Feld an (Gläubiger-ID, IBAN, Name, Verwendungszweck;
+Name/Zweck editierbar), mit Anzahl der betroffenen bestehenden Buchungen
+(`countRuleMatches`). `createRule()` speichert die Regel mit der bisher
+höchsten Priorität und wendet sie auf Wunsch in einer Transaktion auf die
+passenden, nicht manuellen Buchungen an. Eigene Regeln stehen vor den
+Strukturregeln – eine Regel auf ein eigenes Konto (IBAN → Sparen) ist so der
+Weg, Überweisungen auf eigene Konten zu markieren. Regel löschen lässt
+bereits zugeordnete Buchungen unverändert.
+
+UI: `/buchungen/:id` (Detail mit Zuordnung, Quelle der Zuordnung,
+Kartenpaar-Link, Vorläufig-Hinweis), `/regeln` (Liste, Löschen mit
+Bestätigung, Erklärung der Standardregeln; verlinkt unter „Mehr“).
+Buchungen ohne Kategorie findet man seit 14G über den Filter „Ohne
+Kategorie“ der Buchungsliste.
+
+Tests: `categorization.test.ts` (Reihenfolge, Priorität, manuell bleibt,
+Vertrag, Eigenes-Konto-Regel, Erstattung, MCC, keine Ausgabekategorie auf
+Einnahmen, Kartenabrechnungen), `categorizationFlow.test.ts` (echtes
+IndexedDB: manuell speichern, Paar lösen, Regel anwenden ohne manuelle
+anzufassen, IBAN-Regel, Regel beim nächsten Import, Löschen),
+`categorization.ui.test.tsx`.
+
+Tests: `bankImportFlow.test.ts` (Einordnung, Paarung inkl. O-1-Fall,
+Vorschau schreibt nichts, Speichern, Konto wiedererkannt, Kartenpaare aus
+den Fixtures, Rückgängig + erneuter Import, Atomizität),
+`transactions.ui.test.tsx` (Vorschau, Speichern, Abbrechen, Fehlerdatei,
+bereits importiert, zweite Datei, Rückgängig, Mehr-Link, Backup-Hinweis).
+
+**Fixkosten & Verträge (Phase 14F, `domain/usecases/fixedCosts/`)**:
+Eine Vertragsverknüpfung ist eine `CategoryRule` mit `contractId` (Feld
+`mandateReference` > `creditorId` > `counterpartyName`, immer `equals`);
+die Buchung trägt `Transaction.contractId`, der Vertrag nie einen Verweis
+auf Buchungen. Die Engine verknüpft nur Ausgaben (keine Einnahmen,
+Umbuchungen, Kartenabrechnungen); eine bestehende Verknüpfung bleibt,
+Vertragsregeln sind keine Kategorieregeln, Regeln gelöschter Verträge
+werden ignoriert. Verknüpfte Buchungen bekommen die Vertragskategorie
+(manuelle Kategorie bleibt). `updateContract`/`deleteContract` rufen
+`refreshContractBookings()` – nach dem Löschen bleibt der tote Verweis
+(„Vertrag nicht mehr vorhanden“), die Kategorie kommt wieder aus den
+übrigen Regeln. Per Sync geänderte Verträge wirken erst bei der nächsten
+Neuberechnung (Import/Regel).
+
+`contractLinks.ts`: `suggestContractLinks()` (Gruppen nach dem genauesten
+Merkmal; Vorschlag nur bei Anbietername im Namen/Zweck oder ≥ 2 Monaten mit
+±25 % des Monatswerts – nichts wird ohne Bestätigung verknüpft),
+`linkContract()` (über `saveRuleAndApply`, eine Transaktion, auch aus der
+Buchungsdetailseite), `unlinkContract()` (Regeln + Verweise weg, Buchungen
+neu kategorisiert). `contractComparison.ts` (rein): Soll = Vertragswert,
+Ist = Netto der verknüpften Buchungen (Rücklastschrift mindert). Rhythmus
+aus den Abbuchungsmonaten (untere Median-Lücke ≤ 1 monatlich, 11–13
+jährlich, sonst unregelmäßig ohne Soll-Vergleich; Einzelbuchung nach
+Betrag). „Abbuchung fehlt“ nur in einem vollständig importierten Monat
+(`coveredMonthsByAccount`: Monat liegt ganz in den zusammengeführten
+Import-Zeiträumen **jedes** Kontos der Buchungen) nach der ersten
+verknüpften Abbuchung und innerhalb der Vertragslaufzeit; Abweichung auf
+den Cent genau. `buildFixedCostOverview()`: Soll-Summe der im Monat
+aktiven Verträge vs. Ist-Summe der verknüpften Abbuchungen – **Soll fließt
+nie in Ausgaben ein (E7)**. Standardmonat = neuester vollständig
+importierter Monat.
+
+UI: Abschnitt „Abbuchungen“ auf `/vertraege/:id` (Vorschläge mit
+„Zuordnen“, Monatsliste „erwartet …, abgebucht …“, Verknüpfung aufheben),
+„Vertrag zuordnen“ auf `/buchungen/:id`, `/vertraege/fixkosten`
+(Monatswahl, Soll/Ist, Status je Vertrag; verlinkt von `/vertraege` und der
+Dashboard-Karte „Laufende Vertragskosten“), `/regeln` zeigt „→ Vertrag …“.
+Tests: `fixedCosts.test.ts` (rein), `contractLinks.test.ts` (IndexedDB mit
+Fixture, keine syncQueue-Einträge), `categorization.test.ts`
+(Vertragsregeln), `fixedCosts.ui.test.tsx`.
+
+**Dashboard (Phase 14G, `domain/usecases/finance/monthlyOverview.ts`,
+`features/dashboard/finance/`)**: Alle Geldwerte des Dashboards
+(„Kontobewegungen“) kommen **nur aus Buchungen (E7)** – nie aus Bill,
+WasteCost, CostEntry oder Vertragswerten, denn Abrechnungen und Müllgebühren
+werden real vom Girokonto bezahlt und tauchen dort als Buchung auf. Die
+zentrale Projektion aus Phase 9 bleibt unverändert auf `/kostenuebersicht`
+(„erfasste Kosten“); beide zeigen bewusst unterschiedliche Summen.
+`getDashboardData()` liefert nur noch die Haushalts-Karten
+(Vertragsfristen, laufende Vertragskosten mit Soll/Ist-Link, letzte
+Abrechnung, Dokumente); `MonthlyCostCard`/`YearlyCostCard`/
+`CostTrendChart`/`CategoryCostChart`/`DashboardAggregationWarning`/
+`WasteCostsSummaryCard` wurden entfernt.
+
+Kennzahlen (`sumFlows`, O-5): Einnahmen = `income`, Ausgaben = `expense`
+(Erstattung mindert), Gespart = `saving` (Rückfluss mindert), Saldo =
+Einnahmen − Ausgaben − Gespart; Umbuchungen zählen nirgends. Vergleich mit
+dem Vormonat (`compareWithPreviousMonth`) nur, wenn beide Monate
+**vollständig importiert** sind (`isMonthComplete`: jedes Konto mit
+Buchungen im Monat deckt ihn über `coveredMonthsByAccount` aus 14F ganz
+ab) – Einnahmen/Ausgaben in Prozent über `calculatePercentageChange`,
+Saldo/Gespart in Euro (Prozent einer evtl. negativen Basis wäre sinnlos).
+Verlauf (`buildDailySeries`): ein Punkt je Kalendertag mit echten
+Tageswerten und laufenden Summen, als Stufenlinie gezeichnet (keine
+Glättung/Interpolation), im laufenden Monat bis heute; Tippen zeigt die
+Werte eines Tages, `sr-only`-Tabelle der Buchungstage. Kategorien
+(`expensesByGroup`): Ausgaben nach `Category.group` (sonst die Kategorie
+selbst), größte fünf einzeln, Rest „Weitere“ (ein einzelner Rest bleibt
+einzeln), „Ohne Kategorie“ als eigene Gruppe, Gruppen mit Netto ≤ 0 nicht
+im Diagramm. `getFinanceData()` lädt Buchungen/Kategorien/Importe einmal,
+der Monatswechsel rechnet nur im Speicher; Standardmonat = neuester Monat
+mit Buchungen. Ohne Buchungen: Empty State mit „Sparkassen-CSV
+importieren“ und Link zur Kostenübersicht.
+
+Farben: Akzent-Token `--color-accent` app-weit Grün `#0a7f55` (5,0:1 auf
+Weiß, vorher Blau mit 3,65:1); `theme-color`/Manifest ebenso. Gruppenfarben
+(`constants/categoryGroups.ts`): acht Slots einer validierten
+kategorialen Palette (Helligkeitsband, Chroma, Farbsehschwäche geprüft),
+fest je Gruppe für die acht häufigsten Ausgabengruppen, alle übrigen
+neutral grau – Farbe folgt der Gruppe, nie dem Rang, und jede Gruppe ist
+im Diagramm mit Namen, Betrag und Anteil beschriftet. Verlauf: Einnahmen
+Blau, Ausgaben Orange (validiertes Paar).
+
+**Buchungsliste (`/buchungen`, `features/transactions/transactionFilters.ts`)**:
+Suche (Name, Verwendungszweck, Buchungstext, Kategoriename, Betrag),
+Filter Monat/Kategorie (eine Gruppe schließt ihre Kategorien ein, „Ohne
+Kategorie“ = Einnahme/Ausgabe ohne Kategorie)/Art, „Filter zurücksetzen“ –
+reine Funktionen über die einmal geladene Liste, neueste zuerst, 50 je
+Seite („Weitere … anzeigen“). Die Filter stehen in der URL
+(`?monat=&kategorie=&art=&suche=`), damit das Dashboard gefiltert verlinken
+kann und „Zurück“ aus der Detailansicht sie behält. Die Importe stehen
+eingeklappt darunter.
+
+Tests: `financeOverview.test.ts` (O-5, Erstattung/Rückfluss, Vergleich inkl.
+unvollständiger Monate und Vormonat 0, Tagesreihe, Gruppen, Fixture-Test:
+jede Dashboard-Zahl aus den Buchungen nachgerechnet),
+`transactionFilters.test.ts`, `DashboardPage.test.tsx` (Kennzahlen,
+Monatswechsel ohne Neuladen, Empty State, keine Abrechnungs-/Müllsummen),
+`transactions.ui.test.tsx` (Liste, Seiten, Filter aus der URL, Suche,
+ohne Kategorie, keine Treffer), `dashboard.test.ts`.
+
+**Sparziel & Tipps (Phase 14H, `domain/usecases/finance/savingsGoal.ts`,
+`tips.ts`)**: Genau ein Monatsziel (`SavingsGoal`, feste ID `monthly`) in
+IndexedDB – nur lokal, im Backup enthalten, eingestellt unter „Mehr“ →
+„Sparziel“ (`SavingsGoalSettings`, deutsches Betragsformat, > 0 €).
+Fortschritt (`calculateSavingsProgress`, O-5) = (Saldo + Gespart) ÷ Ziel =
+(Einnahmen − Ausgaben) ÷ Ziel, begrenzt auf 0–100 %, abgerundet (99,6 %
+zeigt nie „100 %“); ein negativer Monat ist 0 % und wird ausdrücklich als
+„mehr ausgegeben als eingenommen“ benannt. Dashboard-Karte unter den
+Kennzahlen, ohne Ziel ein Link „Sparziel festlegen“.
+
+Tipps (`buildTips`) sind Regeln über die echten Buchungen/Importe/Verträge
+des gewählten Monats, höchstens drei, in dieser Reihenfolge: fehlende
+Kartenumsätze (vorläufige Kartenabrechnung) → Buchungen ohne Kategorie →
+Vertragsabweichungen und fehlende Abbuchungen (aus
+`buildFixedCostOverview`, 14F) → größte Kategorieänderung zum Vormonat (nur
+wenn beide Monate vollständig importiert sind, ab ±10 % **und** 20 €).
+Trifft keine Regel zu, gibt es keine Tipp-Karte – keine Floskeln. Der
+Hinweis „ohne Kategorie“ steht seitdem nur noch in den Tipps, nicht mehr
+zusätzlich als Banner. Tests: `savingsAndTips.test.ts`,
+`DashboardPage.test.tsx`, `SettingsPage.test.tsx`.
+
 ## PWA-Regeln
 
 - installierbar (Manifest + Icons)
@@ -1160,7 +1481,9 @@ Apple-inspiriert, minimalistisch, hochwertig, ruhig, mobile-first. Große
 Kennzahlen, dezente Karten, übersichtliche Diagramme, viel Weißraum.
 
 Navigation (Bottom Nav auf Mobile, Sidebar ab Desktop-Breakpoint):
-Home, Statistik, Abrechnungen, Verträge, Mehr.
+Home, Buchungen, Statistik, Verträge, Mehr (seit Phase 14D; „Abrechnungen“
+ist seitdem unter „Mehr“ verlinkt – Entscheidung 4 in
+`docs/specs/phase-14a-entscheidungen.md`).
 
 Desktop ist keine einfach vergrößerte Mobile-UI – zusätzlicher Platz wird
 sinnvoll genutzt (z. B. Sidebar-Navigation statt Bottom Nav).

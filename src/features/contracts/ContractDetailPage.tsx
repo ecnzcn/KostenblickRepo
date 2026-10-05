@@ -19,6 +19,7 @@ import { getDocument, getDocumentBlob, saveDocumentFile, validateDocumentFile } 
 import { listRemindersForContract } from '../../domain/usecases/reminders/reminderQueries'
 import { useCategories } from '../../hooks/useCategories'
 import { formatCurrency, formatDate } from '../../utils/formatters'
+import { ContractBookingsSection } from './components/ContractBookingsSection'
 import { ContractStatusBadge } from './components/ContractStatusBadge'
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -199,6 +200,7 @@ export function ContractDetailPage() {
             Vertraglich vereinbart - nicht in der Kostenübersicht enthalten.
           </p>
         </div>
+        <ContractBookingsSection contract={contract} />
         {reminders.length > 0 ? (
           <div className="rounded-2xl border border-neutral-200 bg-white p-5">
             <p className="text-xs text-neutral-500">Erinnerungen</p>

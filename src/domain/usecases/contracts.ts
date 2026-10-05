@@ -5,6 +5,7 @@ import type { CancellationUnit, Contract } from '../models/entities'
 import { contractRepository } from '../repositories/indexedDbRepositories'
 import { calculateCancellationDate } from './cancellationDate'
 import { deleteDocumentIfUnreferenced, getDocument } from './documents'
+import { refreshContractBookings } from './fixedCosts/contractLinks'
 import { generateContractReminders, removeContractReminders } from './reminders/generateContractReminders'
 import { getEnabledReminderOffsets } from './reminders/reminderSettings'
 import { validateContract } from './validation'
@@ -88,6 +89,8 @@ export async function updateContract(id: string, input: ContractInput): Promise<
   // possibly-changed cancellation date - see generateContractReminders for
   // why this is safe to call on every update without creating duplicates.
   await generateContractReminders(saved, getEnabledReminderOffsets())
+  // Linked bookings take the contract's category (14F) - follow a change.
+  await refreshContractBookings(id)
   return saved
 }
 
@@ -95,6 +98,9 @@ export async function deleteContract(id: string): Promise<void> {
   const existing = await contractRepository.getById(id)
   await contractRepository.delete(id)
   await removeContractReminders(id)
+  // Its bookings keep the (now dangling) link but fall back to the other
+  // rules for their category (14F).
+  await refreshContractBookings(id)
   // Deleted after the contract itself, so the reference check below no
   // longer sees this contract as still holding the document.
   await deleteDocumentIfUnreferenced(existing?.documentId)

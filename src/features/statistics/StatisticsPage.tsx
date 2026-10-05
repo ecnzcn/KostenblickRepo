@@ -18,7 +18,7 @@ export function StatisticsPage() {
 
   return (
     <>
-      <PageHeader title="Statistik" subtitle="Kosten nach Monat, Jahr und Kategorie" />
+      <PageHeader title="Nebenkosten-Statistik" subtitle="Deine Abrechnungen nach Jahr, Monat und Kategorie" />
 
       {loading ? (
         <LoadingState />

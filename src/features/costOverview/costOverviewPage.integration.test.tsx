@@ -187,7 +187,7 @@ describe('CostOverviewPage (integration: IndexedDB fixtures -> use case -> page)
 
     fireEvent.click(screen.getByRole('link', { name: /Zur Statistik/ }))
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Statistik' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Nebenkosten-Statistik' })).toBeInTheDocument())
   })
 
   it('shows running contract costs separately, without adding them to the actual-cost total', async () => {

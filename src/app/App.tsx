@@ -11,6 +11,7 @@ import { ImportBillPage } from '../features/bills/import/ImportBillPage'
 import { ContractDetailPage } from '../features/contracts/ContractDetailPage'
 import { ContractFormPage } from '../features/contracts/ContractFormPage'
 import { ContractsPage } from '../features/contracts/ContractsPage'
+import { FixedCostsPage } from '../features/contracts/FixedCostsPage'
 import { CostOverviewPage } from '../features/costOverview/CostOverviewPage'
 import { CostDetailPage } from '../features/costs/CostDetailPage'
 import { CostFormPage } from '../features/costs/CostFormPage'
@@ -21,6 +22,10 @@ import { DocumentsPage } from '../features/documents/DocumentsPage'
 import { RemindersPage } from '../features/reminders/RemindersPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { StatisticsPage } from '../features/statistics/StatisticsPage'
+import { ImportTransactionsPage } from '../features/transactions/import/ImportTransactionsPage'
+import { TransactionsPage } from '../features/transactions/TransactionsPage'
+import { TransactionDetailPage } from '../features/transactions/TransactionDetailPage'
+import { CategoryRulesPage } from '../features/transactions/CategoryRulesPage'
 import { WasteCostDetailPage } from '../features/waste/WasteCostDetailPage'
 import { WasteCostFormPage } from '../features/waste/WasteCostFormPage'
 import { WasteCostsPage } from '../features/waste/WasteCostsPage'
@@ -46,6 +51,11 @@ export function App() {
           <Route path={ROUTES.home} element={<DashboardPage />} />
           <Route path={ROUTES.statistics} element={<StatisticsPage />} />
 
+          <Route path={ROUTES.transactions} element={<TransactionsPage />} />
+          <Route path={ROUTES.transactionsImport} element={<ImportTransactionsPage />} />
+          <Route path={ROUTES.transactionDetailPattern} element={<TransactionDetailPage />} />
+          <Route path={ROUTES.categoryRules} element={<CategoryRulesPage />} />
+
           <Route path={ROUTES.bills} element={<BillsPage />} />
           <Route path={ROUTES.billsNew} element={<BillFormPage mode="create" />} />
           <Route path={ROUTES.billsImport} element={<ImportBillPage />} />
@@ -54,6 +64,7 @@ export function App() {
 
           <Route path={ROUTES.contracts} element={<ContractsPage />} />
           <Route path={ROUTES.contractsNew} element={<ContractFormPage mode="create" />} />
+          <Route path={ROUTES.fixedCosts} element={<FixedCostsPage />} />
           <Route path={ROUTES.contractEditPattern} element={<ContractFormPage mode="edit" />} />
           <Route path={ROUTES.contractDetailPattern} element={<ContractDetailPage />} />
 

@@ -1,6 +1,14 @@
-import { Fragment, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { createBackup, validateBackup } from '../../../domain/usecases/backup'
-import { evaluateBackupFile, performRestore, type BackupEvaluation, type BackupSummary } from '../../../domain/usecases/restore'
+import { getBackupReminder, recordBackupCreated, type BackupReminder } from '../../../domain/usecases/backupReminder'
+import {
+  countLocalTransactions,
+  describeBookingLoss,
+  evaluateBackupFile,
+  performRestore,
+  type BackupEvaluation,
+  type BackupSummary,
+} from '../../../domain/usecases/restore'
 import type { KostenblickBackup } from '../../../domain/usecases/backup'
 import { formatDate } from '../../../utils/formatters'
 import { handleLocalDataRestored } from '../../../services/sync/syncService'
@@ -10,7 +18,7 @@ type ExportStatus = { kind: 'idle' } | { kind: 'exporting' } | { kind: 'success'
 type RestoreState =
   | { kind: 'idle' }
   | { kind: 'error'; message: string }
-  | { kind: 'confirm'; backup: KostenblickBackup; summary: BackupSummary }
+  | { kind: 'confirm'; backup: KostenblickBackup; summary: BackupSummary; bookingLoss: string | null }
   | { kind: 'restoring' }
   | { kind: 'success' }
 
@@ -41,6 +49,8 @@ const SUMMARY_ROWS: { key: keyof BackupSummary['counts']; label: string }[] = [
   { key: 'reminders', label: 'Erinnerungen' },
   { key: 'documents', label: 'Dokumente' },
   { key: 'documentFiles', label: 'Dateien' },
+  { key: 'accounts', label: 'Konten' },
+  { key: 'transactions', label: 'Buchungen' },
 ]
 
 /**
@@ -57,6 +67,17 @@ export function BackupSettings() {
   const [status, setStatus] = useState<ExportStatus>({ kind: 'idle' })
   const [restoreState, setRestoreState] = useState<RestoreState>({ kind: 'idle' })
   const restoreInputRef = useRef<HTMLInputElement>(null)
+  const [reminder, setReminder] = useState<BackupReminder | null>(null)
+
+  const loadReminder = useCallback(() => {
+    getBackupReminder()
+      .then(setReminder)
+      .catch(() => setReminder(null))
+  }, [])
+
+  useEffect(() => {
+    loadReminder()
+  }, [loadReminder])
 
   async function handleExport() {
     setStatus({ kind: 'exporting' })
@@ -76,6 +97,8 @@ export function BackupSettings() {
       anchor.click()
       URL.revokeObjectURL(url)
 
+      recordBackupCreated()
+      loadReminder()
       setStatus({ kind: 'success' })
     } catch (caught) {
       setStatus({
@@ -94,7 +117,8 @@ export function BackupSettings() {
       const text = await file.text()
       const evaluation = evaluateBackupFile(text)
       if (evaluation.status === 'ok') {
-        setRestoreState({ kind: 'confirm', backup: evaluation.backup, summary: evaluation.summary })
+        const bookingLoss = describeBookingLoss(evaluation.summary.counts.transactions, await countLocalTransactions())
+        setRestoreState({ kind: 'confirm', backup: evaluation.backup, summary: evaluation.summary, bookingLoss })
       } else {
         setRestoreState({ kind: 'error', message: describeInvalidEvaluation(evaluation) })
       }
@@ -137,6 +161,21 @@ export function BackupSettings() {
         Lädt alle gespeicherten Daten (inkl. Dokumente) als eine JSON-Datei herunter - für den Fall eines
         Geräteverlusts oder Gerätewechsels.
       </p>
+      <p className="mt-1 text-xs text-neutral-500">
+        Das Backup enthält auch deine importierten Kontoumsätze – bewahre die Datei sicher auf.
+      </p>
+      {reminder ? (
+        <p className="mt-2 text-sm text-neutral-700" data-testid="backup-reminder">
+          {reminder.lastBackupAt
+            ? `Letztes Backup auf diesem Gerät: ${formatDate(reminder.lastBackupAt)}.`
+            : 'Auf diesem Gerät wurde noch kein Backup erstellt.'}
+          {reminder.importedSinceBackup ? (
+            <span className="mt-1 block font-medium text-amber-700">
+              Seitdem wurden Buchungen importiert. Sie liegen nur auf diesem Gerät – erstelle ein Backup.
+            </span>
+          ) : null}
+        </p>
+      ) : null}
       <div className="mt-3 flex items-center justify-between gap-3">
         <p className="text-sm text-neutral-700" role="status">
           {status.kind === 'exporting'
@@ -200,6 +239,11 @@ export function BackupSettings() {
               </Fragment>
             ))}
           </dl>
+          {restoreState.bookingLoss ? (
+            <p className="mt-3 text-sm font-semibold text-red-700" role="alert">
+              {restoreState.bookingLoss} Erstelle vorher ein Backup, wenn du sie behalten möchtest.
+            </p>
+          ) : null}
           <p className="mt-3 text-sm font-semibold text-red-700">
             Backup wiederherstellen? Dabei werden die aktuell in Kostenblick gespeicherten Daten durch den Inhalt
             dieses Backups ersetzt. Dieser Vorgang kann nicht automatisch rückgängig gemacht werden.

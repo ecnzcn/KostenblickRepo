@@ -1,27 +1,21 @@
-import { formatMonthYear } from '../../../utils/formatters'
-
-function getGreeting(hour: number): string {
-  if (hour < 12) return 'Guten Morgen'
-  if (hour < 18) return 'Guten Tag'
-  return 'Guten Abend'
-}
+import type { ReactNode } from 'react'
 
 interface DashboardHeaderProps {
   userDisplayName?: string
-  referenceDate: Date
+  /** Shown to the right of the greeting, e.g. the month picker. */
+  children?: ReactNode
 }
 
-export function DashboardHeader({ userDisplayName, referenceDate }: DashboardHeaderProps) {
-  const greeting = getGreeting(referenceDate.getHours())
-
+export function DashboardHeader({ userDisplayName, children }: DashboardHeaderProps) {
   return (
-    <header className="mb-6">
-      <p className="text-sm font-medium text-neutral-500">
-        {greeting}
-        {userDisplayName ? `, ${userDisplayName}` : ''}
-      </p>
-      <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 lg:text-4xl">Kostenblick</h1>
-      <p className="mt-1 text-sm text-neutral-500">{formatMonthYear(referenceDate)}</p>
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 lg:text-4xl">
+          Hallo{userDisplayName ? `, ${userDisplayName}` : ''}!
+        </h1>
+        <p className="mt-1 text-sm text-neutral-500">Hier ist dein aktueller Kostenblick.</p>
+      </div>
+      {children}
     </header>
   )
 }

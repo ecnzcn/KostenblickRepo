@@ -1,28 +1,8 @@
 import { categoryRepository } from '../repositories/categories'
-import {
-  billItemRepository,
-  billRepository,
-  contractRepository,
-  costEntryRepository,
-  documentRepository,
-  userRepository,
-  wasteCostRepository,
-} from '../repositories/indexedDbRepositories'
+import { billRepository, contractRepository, documentRepository, userRepository } from '../repositories/indexedDbRepositories'
 import type { BalanceType, Bill, Category, Contract, CostEntry, Document } from '../models/entities'
 import { BILL_TYPE_LABELS } from './bills'
 import { calculateRunningContractCosts, type RunningContractCosts } from './contracts'
-import {
-  buildCentralCostItems,
-  type CostAggregationWarning,
-  detectCostAggregationWarnings,
-  getCentralCostsByCategory,
-  getCentralCostsByMonth,
-  getCentralCostsByYear,
-  getCentralCostSummary,
-} from './centralCosts'
-import { calculatePercentageChange } from './percentageChange'
-import type { MonthlyStatistic } from './statistics/statisticsTypes'
-import { getWasteCostSummary, type WasteCostYearSummary } from './wasteCosts'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DEFAULT_UPCOMING_CONTRACTS_LIMIT = 5
@@ -64,28 +44,13 @@ export interface DocumentsSummary {
 
 export interface DashboardData {
   userDisplayName?: string
-  currentMonthCost: number
-  previousMonthCost: number
-  currentMonthChangePercent: number | null
-  currentYearCost: number
-  previousYearCost?: number
-  currentYearChangePercent: number | null
-  monthlyCosts: MonthlyCost[]
-  categoryCosts: CategoryCost[]
   upcomingContracts: ContractDeadline[]
   latestBill?: BillSummary
   documentsSummary: DocumentsSummary
-  wasteCostsSummary: WasteCostYearSummary
   /** Contractual monthly/yearly cost of currently active contracts - never
-   * added to currentMonthCost/currentYearCost (see calculateRunningContractCosts):
-   * these are planned/contractual figures, not money actually spent yet. */
+   * added to any expense figure (see calculateRunningContractCosts, E7):
+   * these are planned/contractual figures, not money actually spent. */
   runningContractCosts: RunningContractCosts
-  /** Possible overlaps between WasteCost and waste-categorized Bill/
-   * CostEntry amounts for the current year (see centralCosts.ts,
-   * detectCostAggregationWarnings) - reused as-is, not reimplemented, so
-   * the Dashboard's headline numbers and /kostenuebersicht never disagree
-   * on whether a possible duplicate exists. Empty when nothing is flagged. */
-  currentYearWarnings: CostAggregationWarning[]
 }
 
 function monthKey(year: number, month: number): string {
@@ -205,89 +170,31 @@ export function getDocumentsSummary(documents: Document[]): DocumentsSummary {
   }
 }
 
-function amountForMonth(monthly: MonthlyStatistic[], key: string): number {
-  return monthly.find((entry) => entry.month === key)?.amount ?? 0
-}
-
 /**
- * Phase 9: the headline cost cards (Monats-/Jahreskosten, Trend, Kategorien)
- * now read from the same central cost projection (domain/usecases/
- * centralCosts.ts) as /kostenuebersicht - Bill.totalAmount + WasteCost +
- * non-Bill-linked CostEntry, Contract excluded - instead of CostEntry
- * alone. This is what removes the previous inconsistency where the
- * Dashboard could show a different "Jahreskosten" figure than the rest of
- * the app for the same year. `getMonthlyCosts`/`getYearlyCosts`/
+ * Phase 14G (E7): the Dashboard's money figures come only from bookings
+ * (domain/usecases/finance/monthlyOverview.ts). This function only loads
+ * the household cards around them - contract deadlines, the latest bill,
+ * documents and the contractual running costs. The central cost projection
+ * (Bill + WasteCost + CostEntry) stays on /kostenuebersicht ("erfasste
+ * Kosten"); showing it next to the bookings would count bills that are
+ * paid from the giro account twice. `getMonthlyCosts`/`getYearlyCosts`/
  * `getCostsByCategory` above remain exported, pure CostEntry-only
- * functions in their own right (still directly tested) - they are simply
- * no longer what this function itself calls.
+ * functions in their own right (still directly tested).
  */
 export async function getDashboardData(referenceDate: Date = new Date()): Promise<DashboardData> {
-  const [users, costEntries, categories, contracts, bills, billItems, documents, wasteCosts] = await Promise.all([
+  const [users, categories, contracts, bills, documents] = await Promise.all([
     userRepository.getAll(),
-    costEntryRepository.getAll(),
     categoryRepository.getAll(),
     contractRepository.getAll(),
     billRepository.getAll(),
-    billItemRepository.getAll(),
     documentRepository.getAll(),
-    wasteCostRepository.getAll(),
   ])
-
-  const currentYear = referenceDate.getUTCFullYear()
-  const currentMonth = referenceDate.getUTCMonth()
-  const previousMonthDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1))
-  const previousYear = currentYear - 1
-
-  const items = buildCentralCostItems(bills, wasteCosts, costEntries)
-  const currentYearMonthly = getCentralCostsByMonth(bills, costEntries, currentYear)
-  // Cheap, in-memory - computed unconditionally so January correctly reads
-  // December's amount from December of the *previous* year rather than
-  // wrapping around within the current year's own 12-month array.
-  const previousYearMonthly = getCentralCostsByMonth(bills, costEntries, previousYear)
-
-  const currentMonthCost = amountForMonth(currentYearMonthly, monthKey(currentYear, currentMonth))
-  const previousMonthMonthly = previousMonthDate.getUTCFullYear() === currentYear ? currentYearMonthly : previousYearMonthly
-  const previousMonthCost = amountForMonth(
-    previousMonthMonthly,
-    monthKey(previousMonthDate.getUTCFullYear(), previousMonthDate.getUTCMonth()),
-  )
-
-  const currentYearWarnings = detectCostAggregationWarnings(bills, billItems, wasteCosts, costEntries, currentYear)
-  const currentYearCost = getCentralCostSummary(items, currentYearMonthly, currentYearWarnings, currentYear).totalAmount
-  const hasPreviousYearData = getCentralCostsByYear(items, previousYear).length > 0
-  const previousYearCost = hasPreviousYearData
-    ? getCentralCostSummary(items, previousYearMonthly, [], previousYear).totalAmount
-    : undefined
-
-  // The compact Dashboard card only shows categorized amounts - a Bill's
-  // un-itemized portion (see BillDiscrepancyNotice on /statistik and the
-  // same distinction on /kostenuebersicht) has no single category to
-  // attribute to a bar here, so it is left out rather than invented.
-  const categoryCosts: CategoryCost[] = getCentralCostsByCategory(bills, billItems, wasteCosts, costEntries, categories, currentYear)
-    .filter((category) => category.categoryId !== undefined)
-    .map((category) => ({
-      categoryId: category.categoryId as string,
-      categoryName: category.categoryName,
-      categoryIcon: category.categoryIcon,
-      amount: category.amount,
-    }))
 
   return {
     userDisplayName: users[0]?.displayName,
-    currentMonthCost,
-    previousMonthCost,
-    currentMonthChangePercent: calculatePercentageChange(previousMonthCost, currentMonthCost),
-    currentYearCost,
-    previousYearCost,
-    currentYearChangePercent:
-      previousYearCost !== undefined ? calculatePercentageChange(previousYearCost, currentYearCost) : null,
-    monthlyCosts: currentYearMonthly.map((entry) => ({ month: entry.month, amount: entry.amount })),
-    categoryCosts,
-    currentYearWarnings,
     upcomingContracts: getUpcomingContractDeadlines(contracts, categories, referenceDate),
     latestBill: getLatestBill(bills),
     documentsSummary: getDocumentsSummary(documents),
-    wasteCostsSummary: getWasteCostSummary(wasteCosts, currentYear),
     runningContractCosts: calculateRunningContractCosts(contracts, referenceDate),
   }
 }

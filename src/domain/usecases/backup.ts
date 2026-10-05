@@ -3,19 +3,31 @@ import { DATABASE_VERSION, type DocumentFileRecord } from '../../database/schema
 import { getAllDocumentFiles } from '../../services/storage/IndexedDbDocumentStorageService'
 import { blobToBase64 } from '../../utils/base64'
 import type {
+  Account,
   Bill,
   BillItem,
   Category,
+  CategoryRule,
   Contract,
   CostEntry,
   Document,
+  ImportBatch,
   Property,
   Reminder,
+  SavingsGoal,
   SyncQueueItem,
+  Transaction,
   User,
   WasteCost,
 } from '../models/entities'
 import { categoryRepository } from '../repositories/categories'
+import {
+  accountRepository,
+  categoryRuleRepository,
+  importBatchRepository,
+  savingsGoalRepository,
+  transactionRepository,
+} from '../repositories/financeRepositories'
 import {
   billItemRepository,
   billRepository,
@@ -41,8 +53,11 @@ import { getPendingSyncChanges } from '../repositories/syncQueue'
  * is simply read from the app's own IndexedDB schema (`DATABASE_VERSION`)
  * rather than duplicated as a separate literal, so the two never drift
  * apart by accident.
+ *
+ * Format 2 (Phase 14) adds the local-only finance stores. Bookings are not
+ * synced anywhere, so this file is their only safety copy.
  */
-export const BACKUP_FORMAT_VERSION = 1
+export const BACKUP_FORMAT_VERSION = 2
 
 /** A `documentFiles` record serialized losslessly for JSON: the blob's own
  * bytes (base64) plus its MIME type (Blob.type), which is everything
@@ -72,6 +87,11 @@ export interface KostenblickBackupData {
    * anyway for a genuinely complete backup of every persisted store,
    * rather than silently omitting one that happens to exist. */
   syncQueue: SyncQueueItem[]
+  accounts: Account[]
+  transactions: Transaction[]
+  importBatches: ImportBatch[]
+  categoryRules: CategoryRule[]
+  savingsGoals: SavingsGoal[]
 }
 
 export interface KostenblickBackup {
@@ -129,6 +149,11 @@ export async function createBackup(): Promise<KostenblickBackup> {
     documents,
     documentFileRecords,
     syncQueue,
+    accounts,
+    transactions,
+    importBatches,
+    categoryRules,
+    savingsGoals,
   ] = await Promise.all([
     userRepository.getAllIncludingDeleted(),
     propertyRepository.getAllIncludingDeleted(),
@@ -142,6 +167,11 @@ export async function createBackup(): Promise<KostenblickBackup> {
     documentRepository.getAllIncludingDeleted(),
     getAllDocumentFiles(),
     getPendingSyncChanges(),
+    accountRepository.getAll(),
+    transactionRepository.getAll(),
+    importBatchRepository.getAll(),
+    categoryRuleRepository.getAll(),
+    savingsGoalRepository.getAll(),
   ])
 
   const documentFiles = await serializeDocumentFiles(documentFileRecords)
@@ -159,6 +189,11 @@ export async function createBackup(): Promise<KostenblickBackup> {
     documents,
     documentFiles,
     syncQueue,
+    accounts,
+    transactions,
+    importBatches,
+    categoryRules,
+    savingsGoals,
   })
 }
 
@@ -176,6 +211,9 @@ const EXPECTED_DATA_KEYS: (keyof KostenblickBackupData)[] = [
   'documentFiles',
   'syncQueue',
 ]
+
+/** Present from formatVersion 2 on; a format-1 file simply predates them. */
+export const FINANCE_DATA_KEYS = ['accounts', 'transactions', 'importBatches', 'categoryRules', 'savingsGoals'] as const satisfies readonly (keyof KostenblickBackupData)[]
 
 /**
  * Structural sanity check run on a just-built backup before it is
@@ -206,6 +244,12 @@ export function validateBackup(backup: unknown): string[] {
 
   for (const key of EXPECTED_DATA_KEYS) {
     if (!Array.isArray(candidate.data[key])) errors.push(`data.${key} fehlt oder ist kein Array.`)
+  }
+  const financeRequired = typeof candidate.formatVersion === 'number' && candidate.formatVersion >= 2
+  for (const key of FINANCE_DATA_KEYS) {
+    const value: unknown = candidate.data[key]
+    if (value === undefined && !financeRequired) continue
+    if (!Array.isArray(value)) errors.push(`data.${key} fehlt oder ist kein Array.`)
   }
 
   for (const file of candidate.data.documentFiles ?? []) {

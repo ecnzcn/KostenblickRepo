@@ -82,6 +82,18 @@ export function ContractsPage() {
         </>
       ) : (
         <div className="flex flex-col gap-4">
+          <Link
+            to={ROUTES.fixedCosts}
+            className="flex min-h-11 items-center justify-between rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-sm"
+          >
+            <span>
+              <span className="block font-semibold text-neutral-900">Fixkosten</span>
+              <span className="block text-neutral-500">Vertragswerte und tatsächliche Abbuchungen im Vergleich</span>
+            </span>
+            <span aria-hidden="true" className="text-neutral-400">
+              →
+            </span>
+          </Link>
           <input
             type="search"
             value={filters.search}

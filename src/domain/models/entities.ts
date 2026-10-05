@@ -14,7 +14,7 @@ export interface SyncableEntity extends PersistedEntity {
 export type BillType = 'utility' | 'operating_cost' | 'annual_statement'
 export type BalanceType = 'credit' | 'payment_due' | 'none'
 export type OCRStatus = 'pending' | 'processing' | 'needs_review' | 'verified' | 'failed' | 'not_started'
-export type CategoryType = 'cost' | 'contract' | 'both'
+export type CategoryType = 'cost' | 'contract' | 'both' | 'income'
 export type CostSource = 'bill' | 'contract' | 'manual' | 'import'
 export type CancellationUnit = 'days' | 'weeks' | 'months' | 'years'
 export type ReminderType = 'cancellation' | 'contract_end' | 'custom'
@@ -66,6 +66,9 @@ export interface Category extends PersistedEntity {
   name: string
   icon: string
   type: CategoryType
+  /** Id of the category this one is grouped under in finance views
+   * (e.g. Heizung → Wohnen). Absent = the category is its own group. */
+  group?: string
 }
 
 export interface CostEntry extends SyncableEntity {
@@ -160,4 +163,107 @@ export type EntityMap = {
   contracts: Contract
   reminders: Reminder
   documents: Document
+}
+
+/*
+ * Finanztracker (Phase 14). Local-only by decision (docs/specs/
+ * phase-14a-entscheidungen.md): none of these is a SYNC_ENTITY_TYPE, so they
+ * carry no deletedAt/syncVersion/userId and are deleted for real - which is
+ * also what lets `transactions` keep a unique [accountId, dedupeKey] index.
+ */
+
+export type AccountType = 'giro' | 'credit_card'
+
+export interface Account extends PersistedEntity {
+  name: string
+  bank: 'sparkasse'
+  type: AccountType
+  last4: string
+  /** SHA-256 over identifierSalt + normalized IBAN (giro) or masked card
+   * number (credit card). The full IBAN/card number is never stored. */
+  identifierHash: string
+  identifierSalt: string
+}
+
+/** How a booking counts: never two of these at once, so nothing is counted
+ * twice. `saving` = moved to an own savings/investment account. */
+export type FlowType = 'income' | 'expense' | 'transfer' | 'saving'
+export type FlowTypeSource = 'manual' | 'rule' | 'auto'
+export type CategorySource = 'manual' | 'rule' | 'contract' | 'bank' | 'none'
+
+export interface Transaction extends PersistedEntity {
+  accountId: string
+  /** YYYY-MM-DD */
+  bookingDate: string
+  valueDate?: string
+  /** Card purchase date (Belegdatum). */
+  purchaseDate?: string
+  /** Signed, in euros: negative = money leaves the account. */
+  amount: number
+  currency: string
+  counterpartyName: string
+  counterpartyIban?: string
+  purpose: string
+  bookingText: string
+  creditorId?: string
+  mandateReference?: string
+  endToEndReference?: string
+  categoryId?: string
+  categorySource: CategorySource
+  bankCategory?: string
+  flowType: FlowType
+  flowTypeSource: FlowTypeSource
+  /** The other half of a giro ↔ credit card settlement pair. */
+  transferPairId?: string
+  /** Only set when the export carries a real foreign currency. */
+  originalAmount?: number
+  originalCurrency?: string
+  exchangeRate?: number
+  isReversal?: boolean
+  /** Card merchant category code (ISO 18245) from the card export. */
+  merchantCategoryCode?: string
+  /** May point to a contract that no longer exists (contracts sync, bookings
+   * do not) - readers must treat a missing contract as "unlinked". */
+  contractId?: string
+  importBatchId: string
+  dedupeKey: string
+  notes?: string
+}
+
+export interface ImportBatchCounts {
+  total: number
+  new: number
+  duplicates: number
+  skippedPending: number
+}
+
+export interface ImportBatch extends PersistedEntity {
+  accountId: string
+  filename: string
+  fileChecksum: string
+  importedAt: ISODateString
+  /** YYYY-MM-DD */
+  periodFrom: string
+  periodTo: string
+  counts: ImportBatchCounts
+}
+
+export type CategoryRuleField = 'counterpartyName' | 'purpose' | 'creditorId' | 'counterpartyIban' | 'mandateReference'
+
+export interface CategoryRule extends PersistedEntity {
+  field: CategoryRuleField
+  matchType: 'contains' | 'equals'
+  pattern: string
+  /** At least one of categoryId / flowType / contractId is set. */
+  categoryId?: string
+  flowType?: FlowType
+  /** A contract link (14F): matching expense bookings belong to this
+   * contract. May point to a contract that no longer exists - ignored then. */
+  contractId?: string
+  priority: number
+  createdFrom: 'manual' | 'seed'
+}
+
+export interface SavingsGoal extends PersistedEntity {
+  monthlyTarget: number
 }

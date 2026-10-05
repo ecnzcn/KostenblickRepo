@@ -1,13 +1,22 @@
 import type { IDBPTransaction, StoreNames, StoreValue } from 'idb'
 import { getDatabase } from '../../database/database'
 import { DATABASE_VERSION, type DocumentFileRecord, type KostenblickDB } from '../../database/schema'
+import { mergeDefaultCategories } from '../../constants/categories'
+import type { Category } from '../models/entities'
 import { base64ToBlob } from '../../utils/base64'
 import {
   BACKUP_FORMAT_VERSION,
+  FINANCE_DATA_KEYS,
   validateBackup,
   type KostenblickBackup,
   type KostenblickBackupData,
 } from './backup'
+
+/** Oldest backup this release still restores: format 1 / database 2 is
+ * release 1.1 (before the finance stores). Newer ones are rejected - there
+ * is no downgrade. */
+const OLDEST_FORMAT_VERSION = 1
+const OLDEST_DATABASE_VERSION = 2
 
 /**
  * Phase 12C: local backup restore. Restoring is a **Human Gate** feature -
@@ -23,6 +32,12 @@ import {
  * preserved as-is - see CLAUDE.md's soft-delete rules) and the (always
  * empty in V1) syncQueue, which is restored structurally but never
  * executed/triggers no sync behavior - there is no SyncService to run it.
+ *
+ * Two deliberate exceptions to "exactly the backup": an older backup without
+ * the Phase 14 finance stores restores them as empty (the UI warns first
+ * when that deletes bookings), and default categories missing from the
+ * backup are added back (mergeDefaultCategories), so bookings never end up
+ * pointing at categories that a pre-Phase-14 backup did not know.
  */
 
 export interface BackupSummary {
@@ -38,6 +53,8 @@ export interface BackupSummary {
     reminders: number
     documents: number
     documentFiles: number
+    accounts: number
+    transactions: number
   }
 }
 
@@ -55,6 +72,8 @@ export function getBackupSummary(backup: KostenblickBackup): BackupSummary {
       reminders: backup.data.reminders.length,
       documents: backup.data.documents.length,
       documentFiles: backup.data.documentFiles.length,
+      accounts: backup.data.accounts.length,
+      transactions: backup.data.transactions.length,
     },
   }
 }
@@ -68,10 +87,10 @@ export function getBackupSummary(backup: KostenblickBackup): BackupSummary {
  */
 export function checkBackupCompatibility(backup: KostenblickBackup): string[] {
   const errors: string[] = []
-  if (backup.formatVersion !== BACKUP_FORMAT_VERSION) {
+  if (backup.formatVersion < OLDEST_FORMAT_VERSION || backup.formatVersion > BACKUP_FORMAT_VERSION) {
     errors.push('Dieses Backupformat wird von dieser Version von Kostenblick nicht unterstützt.')
   }
-  if (backup.databaseVersion !== DATABASE_VERSION) {
+  if (backup.databaseVersion < OLDEST_DATABASE_VERSION || backup.databaseVersion > DATABASE_VERSION) {
     errors.push(
       'Dieses Backup wurde mit einer anderen Datenbankversion von Kostenblick erstellt und kann von dieser Version nicht wiederhergestellt werden.',
     )
@@ -127,7 +146,47 @@ export function validateBackupReferences(data: KostenblickBackupData): string[] 
     }
   }
 
+  // Finance stores. Transaction.contractId is deliberately not checked: the
+  // contract syncs, the booking does not, so a dangling link is a legitimate
+  // local state (household "Ersetzen", contract deleted on another device).
+  const accountIds = new Set(data.accounts.map((account) => account.id))
+  const batchIds = new Set(data.importBatches.map((batch) => batch.id))
+  const categoryIds = new Set(data.categories.map((category) => category.id))
+  for (const batch of data.importBatches) {
+    if (!accountIds.has(batch.accountId)) errors.push(`Import ${batch.id} verweist auf kein vorhandenes Konto.`)
+  }
+  for (const transaction of data.transactions) {
+    if (!accountIds.has(transaction.accountId)) {
+      errors.push(`Buchung ${transaction.id} verweist auf kein vorhandenes Konto.`)
+    }
+    if (!batchIds.has(transaction.importBatchId)) {
+      errors.push(`Buchung ${transaction.id} verweist auf keinen vorhandenen Import.`)
+    }
+  }
+  for (const rule of data.categoryRules) {
+    if (rule.categoryId && !categoryIds.has(rule.categoryId)) {
+      errors.push(`Regel ${rule.id} verweist auf keine vorhandene Kategorie.`)
+    }
+  }
+
   return errors
+}
+
+/** Brings an accepted older backup up to the current data shape: the
+ * finance stores a format-1 file predates become empty lists. */
+export function upgradeBackupData(backup: KostenblickBackup): KostenblickBackup {
+  const data = { ...backup.data } as KostenblickBackupData
+  for (const key of FINANCE_DATA_KEYS) {
+    if (data[key] === undefined) (data as unknown as Record<string, unknown[]>)[key] = []
+  }
+  return { ...backup, data }
+}
+
+/** The backup's categories plus any default category it lacks. */
+export function categoriesToRestore(categories: readonly Category[]): Category[] {
+  const byId = new Map(categories.map((category) => [category.id, category]))
+  for (const category of mergeDefaultCategories(categories)) byId.set(category.id, category)
+  return [...byId.values()]
 }
 
 export type BackupEvaluation =
@@ -158,12 +217,12 @@ export function evaluateBackupFile(rawText: string): BackupEvaluation {
     return { status: 'invalid_structure', errors: structuralErrors }
   }
 
-  const backup = parsed as KostenblickBackup
-
-  const compatibilityErrors = checkBackupCompatibility(backup)
+  const compatibilityErrors = checkBackupCompatibility(parsed as KostenblickBackup)
   if (compatibilityErrors.length > 0) {
     return { status: 'incompatible', errors: compatibilityErrors }
   }
+
+  const backup = upgradeBackupData(parsed as KostenblickBackup)
 
   const referenceErrors = validateBackupReferences(backup.data)
   if (referenceErrors.length > 0) {
@@ -186,6 +245,11 @@ const RESTORE_STORE_NAMES: StoreNames<KostenblickDB>[] = [
   'documents',
   'documentFiles',
   'syncQueue',
+  'accounts',
+  'transactions',
+  'importBatches',
+  'categoryRules',
+  'savingsGoals',
 ]
 
 async function restoreStore<Name extends StoreNames<KostenblickDB>>(
@@ -211,7 +275,8 @@ async function restoreStore<Name extends StoreNames<KostenblickDB>>(
  * pure step) so the transaction itself never has to await anything that
  * could let it go idle and auto-commit early.
  */
-export async function performRestore(backup: KostenblickBackup): Promise<void> {
+export async function performRestore(input: KostenblickBackup): Promise<void> {
+  const backup = upgradeBackupData(input)
   const db = await getDatabase()
   const documentFileRecords: DocumentFileRecord[] = backup.data.documentFiles.map((file) => ({
     id: file.id,
@@ -231,7 +296,7 @@ export async function performRestore(backup: KostenblickBackup): Promise<void> {
       restoreStore(tx, 'properties', backup.data.properties),
       restoreStore(tx, 'bills', backup.data.bills),
       restoreStore(tx, 'billItems', backup.data.billItems),
-      restoreStore(tx, 'categories', backup.data.categories),
+      restoreStore(tx, 'categories', categoriesToRestore(backup.data.categories)),
       restoreStore(tx, 'costEntries', backup.data.costEntries),
       restoreStore(tx, 'wasteCosts', backup.data.wasteCosts),
       restoreStore(tx, 'contracts', backup.data.contracts),
@@ -239,6 +304,11 @@ export async function performRestore(backup: KostenblickBackup): Promise<void> {
       restoreStore(tx, 'documents', backup.data.documents),
       restoreStore(tx, 'documentFiles', documentFileRecords),
       restoreStore(tx, 'syncQueue', backup.data.syncQueue),
+      restoreStore(tx, 'accounts', backup.data.accounts),
+      restoreStore(tx, 'transactions', backup.data.transactions),
+      restoreStore(tx, 'importBatches', backup.data.importBatches),
+      restoreStore(tx, 'categoryRules', backup.data.categoryRules),
+      restoreStore(tx, 'savingsGoals', backup.data.savingsGoals),
     ])
     await tx.done
   } catch (error) {
@@ -250,4 +320,21 @@ export async function performRestore(backup: KostenblickBackup): Promise<void> {
     }
     throw error instanceof Error ? error : new Error('Wiederherstellung fehlgeschlagen.')
   }
+}
+
+export async function countLocalTransactions(): Promise<number> {
+  const db = await getDatabase()
+  return db.count('transactions')
+}
+
+/**
+ * Bookings exist only on this device (no sync), so a restore that holds
+ * fewer of them than the device - typically an older backup without any -
+ * must say so before the user confirms. null = nothing is lost.
+ */
+export function describeBookingLoss(backupCount: number, localCount: number): string | null {
+  if (localCount <= backupCount) return null
+  const local = localCount === 1 ? 'Die 1 Buchung auf diesem Gerät wird' : `Die ${localCount} Buchungen auf diesem Gerät werden`
+  if (backupCount === 0) return `Dieses Backup enthält keine Buchungen. ${local} gelöscht.`
+  return `Dieses Backup enthält nur ${backupCount} von ${localCount} Buchungen auf diesem Gerät. Nach der Wiederherstellung sind nur noch die Buchungen aus dem Backup vorhanden.`
 }
