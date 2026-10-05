@@ -1232,6 +1232,48 @@ und warnt, wenn seitdem Buchungen importiert wurden, plus Hinweis, dass
 das Backup Kontoumsätze enthält. Nach jedem Import fragt die Seite
 „Backup erstellen?“ (Button lädt direkt herunter, „Später“ blendet aus).
 
+**Kategorisierung (Phase 14E, `domain/usecases/categorization/`)**:
+`categorizeTransaction()` ist die eine, reine Regel-Engine – Reihenfolge:
+manuell → verknüpfter Vertrag (`Transaction.contractId`, fehlender Vertrag
+wird ignoriert) → eigene Regeln (höchste `priority` zuerst) →
+Strukturregeln aus `classifyBankRow` → Standardregeln
+(`constants/standardCategoryRules.ts`: wenige eindeutige Händlernamen als
+ganzes Wort, bei Kreditkarten der Händlerkategorie-Code `merchantCategoryCode`
+aus „Gebührenschlüssel“) → Sparkassen-Kategorie → keine. Eine manuelle
+Kategorie oder ein manueller `flowType` wird **nie** geändert
+(`recategorize()` liefert sie unverändert zurück). Kategorie und Fluss
+gehören zusammen: eine Einnahme-Kategorie heißt Einnahme, eine
+Ausgabe-Kategorie Ausgabe (positive Buchung = Erstattung, O-8), „Sparen“
+heißt `saving`. Giro-Kartenabrechnungen und Karten-Lastschriften
+überlässt die Engine `reconcileCardSettlements`. Der Import kategorisiert
+neue Buchungen schon mit den gespeicherten Regeln.
+
+Manuell (`transactionCategorization.ts`): `setTransactionAssignment()`
+speichert die Wahl aus **einem** Auswahlfeld (Kategorie / Sparen /
+Umbuchung / ohne Kategorie) als `manual` und verknüpft die Kartenpaare neu.
+Danach fragt die Detailseite „Immer so zuordnen?“ (`RulePrompt`):
+Vorschläge vom genauesten Feld an (Gläubiger-ID, IBAN, Name, Verwendungszweck;
+Name/Zweck editierbar), mit Anzahl der betroffenen bestehenden Buchungen
+(`countRuleMatches`). `createRule()` speichert die Regel mit der bisher
+höchsten Priorität und wendet sie auf Wunsch in einer Transaktion auf die
+passenden, nicht manuellen Buchungen an. Eigene Regeln stehen vor den
+Strukturregeln – eine Regel auf ein eigenes Konto (IBAN → Sparen) ist so der
+Weg, Überweisungen auf eigene Konten zu markieren. Regel löschen lässt
+bereits zugeordnete Buchungen unverändert.
+
+UI: `/buchungen/:id` (Detail mit Zuordnung, Quelle der Zuordnung,
+Kartenpaar-Link, Vorläufig-Hinweis), Liste „Ohne Kategorie“ auf
+`/buchungen`, `/regeln` (Liste, Löschen mit Bestätigung, Erklärung der
+Standardregeln; verlinkt unter „Mehr“). Die vollständige Buchungsliste mit
+Suche/Filtern bleibt 14G.
+
+Tests: `categorization.test.ts` (Reihenfolge, Priorität, manuell bleibt,
+Vertrag, Eigenes-Konto-Regel, Erstattung, MCC, keine Ausgabekategorie auf
+Einnahmen, Kartenabrechnungen), `categorizationFlow.test.ts` (echtes
+IndexedDB: manuell speichern, Paar lösen, Regel anwenden ohne manuelle
+anzufassen, IBAN-Regel, Regel beim nächsten Import, Löschen),
+`categorization.ui.test.tsx`.
+
 Tests: `bankImportFlow.test.ts` (Einordnung, Paarung inkl. O-1-Fall,
 Vorschau schreibt nichts, Speichern, Konto wiedererkannt, Kartenpaare aus
 den Fixtures, Rückgängig + erneuter Import, Atomizität),
