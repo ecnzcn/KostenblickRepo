@@ -127,3 +127,73 @@ V1.1.0 baut direkt auf `v1.0.0` auf und enthält ausschließlich die Phasen
 `syncQueue`/`syncVersion` bleiben weiterhin lediglich vorbereitende
 technische Elemente ohne aktiven Consumer (siehe „Sync"-Abschnitt in
 [`CLAUDE.md`](./CLAUDE.md)).
+
+## Kostenblick V1.2.0
+
+### Release-Stand
+
+**Release-Kandidat** auf `claude/kostenblick-pwa-setup-cq6w1e`. Der Tag
+`v1.2.0` wird erst gesetzt, wenn der iPhone-Test mit einem echten
+Sparkassen-Export bestanden ist (Anleitung:
+[`docs/IPHONE_TEST_1.2.md`](./docs/IPHONE_TEST_1.2.md)).
+
+V1.2.0 baut auf `v1.1.0` auf und enthält die Synchronisierung aus Phase
+13B–13E (bereits auf `main`) sowie den Finanztracker aus Phase 14B–14I.
+
+### Neu gegenüber V1.1.0
+
+**Synchronisierung** (Phase 13B–13E, „Mehr" → „Synchronisierung")
+
+- Haushalt mit mehreren Mitgliedern über Supabase, Anmeldung per E-Mail-Code
+- Abgleich bei App-Start, Rückkehr in den Vordergrund und auf Knopfdruck
+- Konflikte werden pro Feld gelöst; Geldbeträge und Kündigungsfristen werden
+  nie still überschrieben
+- Einrichtung: [`docs/SYNC_SETUP.md`](./docs/SYNC_SETUP.md)
+
+**Finanztracker** (Phase 14)
+
+- Import der Sparkassen-CSV für Girokonto (CSV-CAMT V2) und Kreditkarte
+  (`/buchungen/import`): Vorschau vor dem Speichern, doppelte Umsätze werden
+  erkannt, ein Import lässt sich rückgängig machen
+- Kreditkartenabrechnung auf dem Girokonto und Kartenumsätze zählen nie
+  doppelt (Abrechnung und Karten-Lastschrift werden als Umbuchung gepaart)
+- Automatische Kategorien (Strukturregeln, bekannte Händler,
+  Sparkassen-Kategorie als Vorschlag), eigene Regeln „Immer so zuordnen?“,
+  Regelverwaltung unter „Mehr“ → „Kategorieregeln“
+- Buchungsliste mit Suche und Filtern (Monat, Kategorie, Art, ohne Kategorie)
+- Verträge ↔ Abbuchungen: Vorschläge, Soll/Ist je Monat („erwartet 39,99 €,
+  abgebucht 44,99 €“), fehlende Abbuchungen, Seite „Fixkosten“
+- Neues Dashboard: Einnahmen, Ausgaben, Saldo, Gespart mit Vormonatsvergleich,
+  Monatsverlauf, Ausgaben nach Kategorie, letzte Buchungen
+- Sparziel mit Fortschritt und regelbasierte Tipps aus den echten Daten
+- Grüne Akzentfarbe mit besserem Kontrast; Navigation Home, Buchungen,
+  Statistik, Verträge, Mehr („Abrechnungen“ unter „Mehr“)
+
+**Wichtig zu wissen**
+
+- Buchungen, Konten, Regeln und das Sparziel bleiben **nur auf diesem
+  Gerät**. Sie werden nicht synchronisiert und sind nur im Backup gesichert –
+  nach Importen ein Backup erstellen (die App erinnert daran).
+- Das Dashboard rechnet nur mit Kontobewegungen. Abrechnungen, Müllkosten
+  und manuell erfasste Kosten stehen weiter in der Kostenübersicht
+  („erfasste Kosten“), damit vom Konto bezahlte Rechnungen nicht doppelt
+  zählen. Die Statistik heißt jetzt „Nebenkosten-Statistik“.
+- Datenbank-Version 3, Backup-Format 2. Backups aus V1.1.0 lassen sich
+  weiterhin wiederherstellen.
+
+### Technischer Zustand (V1.2.0)
+
+- Tests: 818/818 bestanden
+- TypeScript (`tsc -b`): keine Fehler
+- Lint (`oxlint`): keine Meldungen
+- Build (`npm run build`): erfolgreich
+- Browser geprüft im iPhone-15-Pro- und Desktop-Viewport mit den
+  anonymisierten Test-CSVs; Test mit echtem Export auf dem iPhone ausstehend
+
+### Bekannte Grenzen (V1.2.0)
+
+- Nur Sparkassen-CSV (Girokonto CSV-CAMT V2 und Kreditkarte); andere Banken
+  oder Formate werden abgelehnt.
+- Vorgemerkte Kreditkartenumsätze sind im Kartenexport nicht erkennbar und
+  werden mit importiert (O-7, Prüfung beim iPhone-Test).
+- Dokument-Dateien werden noch nicht synchronisiert (Phase 13F).
