@@ -20,7 +20,7 @@ describe('App', () => {
   it('renders all items in the bottom navigation', () => {
     renderApp()
     const nav = screen.getByRole('navigation', { name: 'Hauptnavigation' })
-    for (const label of ['Home', 'Statistik', 'Abrechnungen', 'Verträge', 'Mehr']) {
+    for (const label of ['Home', 'Buchungen', 'Statistik', 'Verträge', 'Mehr']) {
       expect(within(nav).getByRole('link', { name: new RegExp(label) })).toBeInTheDocument()
     }
   })
@@ -28,7 +28,7 @@ describe('App', () => {
   it('renders all items in the desktop sidebar navigation', () => {
     renderApp()
     const nav = screen.getByRole('navigation', { name: 'Seitennavigation' })
-    for (const label of ['Home', 'Statistik', 'Abrechnungen', 'Verträge', 'Mehr']) {
+    for (const label of ['Home', 'Buchungen', 'Statistik', 'Verträge', 'Mehr']) {
       expect(within(nav).getByRole('link', { name: new RegExp(label) })).toBeInTheDocument()
     }
   })

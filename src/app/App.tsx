@@ -21,6 +21,8 @@ import { DocumentsPage } from '../features/documents/DocumentsPage'
 import { RemindersPage } from '../features/reminders/RemindersPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { StatisticsPage } from '../features/statistics/StatisticsPage'
+import { ImportTransactionsPage } from '../features/transactions/import/ImportTransactionsPage'
+import { TransactionsPage } from '../features/transactions/TransactionsPage'
 import { WasteCostDetailPage } from '../features/waste/WasteCostDetailPage'
 import { WasteCostFormPage } from '../features/waste/WasteCostFormPage'
 import { WasteCostsPage } from '../features/waste/WasteCostsPage'
@@ -45,6 +47,9 @@ export function App() {
         <Routes key={dataVersion}>
           <Route path={ROUTES.home} element={<DashboardPage />} />
           <Route path={ROUTES.statistics} element={<StatisticsPage />} />
+
+          <Route path={ROUTES.transactions} element={<TransactionsPage />} />
+          <Route path={ROUTES.transactionsImport} element={<ImportTransactionsPage />} />
 
           <Route path={ROUTES.bills} element={<BillsPage />} />
           <Route path={ROUTES.billsNew} element={<BillFormPage mode="create" />} />

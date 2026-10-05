@@ -14,6 +14,11 @@ export function SettingsPage() {
       <div className="flex flex-col gap-4">
         <ul className="divide-y divide-neutral-200 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
           <li>
+            <Link to={ROUTES.bills} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
+              Abrechnungen
+            </Link>
+          </li>
+          <li>
             <Link to={ROUTES.costOverview} className="block min-h-11 px-4 py-3 text-sm font-medium text-accent">
               Kostenübersicht
             </Link>

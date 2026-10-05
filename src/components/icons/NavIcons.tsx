@@ -30,11 +30,10 @@ export function StatisticsIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-export function BillsIcon(props: SVGProps<SVGSVGElement>) {
+export function TransactionsIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...baseProps(props)}>
-      <path d="M6 3h9l3 3v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
-      <path d="M9 9h6M9 13h6M9 17h3" />
+      <path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5" />
     </svg>
   )
 }
