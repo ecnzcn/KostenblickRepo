@@ -1,6 +1,7 @@
 import { SPARKASSE_CATEGORY_MAP } from '../../../constants/bankCategories'
 import {
   CREDIT_CARD_UNITEMIZED_CATEGORY_ID,
+  INCOME_CATEGORY_IDS,
   OTHER_INCOME_CATEGORY_ID,
   SALARY_CATEGORY_ID,
   SAVINGS_CATEGORY_ID,
@@ -15,15 +16,17 @@ export interface RowClassification {
   isReversal?: boolean
 }
 
-const INCOME_CATEGORY_IDS = new Set([SALARY_CATEGORY_ID, OTHER_INCOME_CATEGORY_ID])
+/** What the classification reads - a freshly parsed row and a stored
+ * Transaction both have these. */
+export type BankBookingFields = Pick<ParsedBankRow, 'bookingText' | 'amount' | 'bankCategory'>
 /** Booking texts of a giro debit that settles a credit card statement. */
 export const GIRO_CARD_SETTLEMENT_TEXT = 'EIGENE KREDITKARTENABRECHN.'
 
-function bookingTextOf(row: ParsedBankRow): string {
+function bookingTextOf(row: BankBookingFields): string {
   return row.bookingText.replace(/\s+/g, ' ').trim().toUpperCase()
 }
 
-function bankSuggestion(row: ParsedBankRow, flowType: 'income' | 'expense'): Pick<RowClassification, 'categoryId' | 'categorySource'> {
+function bankSuggestion(row: BankBookingFields, flowType: 'income' | 'expense'): Pick<RowClassification, 'categoryId' | 'categorySource'> {
   const mapped = row.bankCategory ? SPARKASSE_CATEGORY_MAP[row.bankCategory] : undefined
   if (flowType === 'income') {
     if (row.bankCategory === 'Einkommen' && bookingTextOf(row) === 'LOHN GEHALT') {
@@ -44,7 +47,7 @@ function bankSuggestion(row: ParsedBankRow, flowType: 'income' | 'expense'): Pic
  * with the card statement (reconcileCardSettlements) turns them into
  * transfers.
  */
-export function classifyBankRow(row: ParsedBankRow, accountType: AccountType): RowClassification {
+export function classifyBankRow(row: BankBookingFields, accountType: AccountType): RowClassification {
   const text = bookingTextOf(row)
 
   if (accountType === 'credit_card') {

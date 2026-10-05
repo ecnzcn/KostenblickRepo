@@ -48,6 +48,12 @@ export const DEFAULT_CATEGORIES: Category[] = CATEGORY_SEED.map(({ type, group, 
   updatedAt: now,
 }))
 
+/** Income categories (Gehalt, Sonstige Einnahmen) - an income booking only
+ * ever gets one of these, an expense never does. */
+export const INCOME_CATEGORY_IDS: ReadonlySet<string> = new Set(
+  DEFAULT_CATEGORIES.filter((category) => category.type === 'income').map((category) => category.id),
+)
+
 /**
  * Adds every default category missing from `existing` and gives existing
  * defaults their `group` if they lack one. Never renames or otherwise

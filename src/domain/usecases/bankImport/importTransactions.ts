@@ -2,7 +2,15 @@ import { getDatabase } from '../../../database/database'
 import { STORE_NAMES } from '../../../database/schema'
 import type { BankRowError, ParsedBankStatement } from '../../models/bankImport'
 import type { Account, AccountType, ImportBatch, ImportBatchCounts, Transaction } from '../../models/entities'
-import { accountRepository, importBatchRepository, transactionRepository } from '../../repositories/financeRepositories'
+import {
+  accountRepository,
+  categoryRuleRepository,
+  importBatchRepository,
+  transactionRepository,
+} from '../../repositories/financeRepositories'
+import { contractRepository } from '../../repositories/indexedDbRepositories'
+import { categorizeTransaction, withAssignment, type CategorizationContext } from '../categorization/categorizeTransaction'
+import { selectUncategorized } from '../categorization/transactionCategorization'
 import { sha256Hex } from '../../../utils/hash'
 import { generateId } from '../../../utils/id'
 import { roundToCents } from '../../../utils/money'
@@ -63,7 +71,13 @@ export function suggestAccountName(type: AccountType, identifier: string): strin
   return `${ACCOUNT_LABELS[type]} ••${last4(identifier)}`
 }
 
-export function toTransaction(row: KeyedBankRow, account: Account, importBatchId: string, now: string): Transaction {
+export function toTransaction(
+  row: KeyedBankRow,
+  account: Account,
+  importBatchId: string,
+  now: string,
+  context?: CategorizationContext,
+): Transaction {
   const classification = classifyBankRow(row, account.type)
   const transaction: Transaction = {
     id: generateId(),
@@ -89,6 +103,7 @@ export function toTransaction(row: KeyedBankRow, account: Account, importBatchId
     originalCurrency: row.originalCurrency,
     exchangeRate: row.exchangeRate,
     isReversal: classification.isReversal,
+    merchantCategoryCode: row.merchantCategoryCode,
     importBatchId,
     dedupeKey: row.dedupeKey,
     createdAt: now,
@@ -98,7 +113,7 @@ export function toTransaction(row: KeyedBankRow, account: Account, importBatchId
   for (const key of Object.keys(transaction) as (keyof Transaction)[]) {
     if (transaction[key] === undefined) delete transaction[key]
   }
-  return transaction
+  return context ? withAssignment(transaction, categorizeTransaction(transaction, context), now) : transaction
 }
 
 /** Income, expenses and savings of a set of bookings. Transfers count
@@ -158,7 +173,17 @@ export async function prepareImport(file: File, now: Date = new Date()): Promise
     createdAt: nowIso,
     updatedAt: nowIso,
   }
-  const newTransactions = plan.newRows.map((row) => toTransaction(row, account, batch.id, nowIso))
+  const [rules, contracts, accounts] = await Promise.all([
+    categoryRuleRepository.getAll(),
+    contractRepository.getAll(),
+    accountRepository.getAll(),
+  ])
+  const context: CategorizationContext = {
+    rules,
+    contracts,
+    accountTypes: new Map([...accounts.map((entry) => [entry.id, entry.type] as const), [account.id, account.type]]),
+  }
+  const newTransactions = plan.newRows.map((row) => toTransaction(row, account, batch.id, nowIso, context))
 
   return {
     ok: true,
@@ -266,6 +291,8 @@ export interface ImportOverview {
   /** Giro card statements counted as transfer only provisionally - the
    * card export for their period is missing (O-1). */
   provisionalSettlements: number
+  /** Income/expense bookings without a category, newest first. */
+  uncategorized: Transaction[]
 }
 
 export async function getImportOverview(): Promise<ImportOverview> {
@@ -281,5 +308,6 @@ export async function getImportOverview(): Promise<ImportOverview> {
       .map((batch) => ({ batch, accountName: names.get(batch.accountId) ?? 'Unbekanntes Konto' })),
     transactionCount: transactions.length,
     provisionalSettlements: transactions.filter(isProvisionalSettlement).length,
+    uncategorized: selectUncategorized(transactions),
   }
 }

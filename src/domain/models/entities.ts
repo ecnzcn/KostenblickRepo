@@ -220,6 +220,8 @@ export interface Transaction extends PersistedEntity {
   originalCurrency?: string
   exchangeRate?: number
   isReversal?: boolean
+  /** Card merchant category code (ISO 18245) from the card export. */
+  merchantCategoryCode?: string
   /** May point to a contract that no longer exists (contracts sync, bookings
    * do not) - readers must treat a missing contract as "unlinked". */
   contractId?: string
