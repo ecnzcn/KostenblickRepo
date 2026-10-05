@@ -777,6 +777,9 @@ Unallocated-Hinweis (`CostOverviewMonthlyChart`) und Kategorieaufschlüsselung
 „Kostenübersicht →"-Link direkt über den Kosten-Karten auf dem Dashboard –
 bewusst **nicht** in der fünfteiligen Bottom-Nav/Sidebar (Home, Statistik,
 Abrechnungen, Verträge, Mehr bleibt unverändert).
+*(Seit Phase 14G zeigt das Dashboard keine Werte dieser Projektion mehr –
+siehe „Dashboard (Phase 14G)“ im Finanztracker-Abschnitt. Die
+Kostenübersicht ist unverändert die Ansicht der „erfassten Kosten“.)*
 
 **Dashboard-Integration**: `getDashboardData()`
 (`domain/usecases/dashboard.ts`) berechnet `currentMonthCost`/
@@ -1320,6 +1323,66 @@ Dashboard-Karte „Laufende Vertragskosten“), `/regeln` zeigt „→ Vertrag �
 Tests: `fixedCosts.test.ts` (rein), `contractLinks.test.ts` (IndexedDB mit
 Fixture, keine syncQueue-Einträge), `categorization.test.ts`
 (Vertragsregeln), `fixedCosts.ui.test.tsx`.
+
+**Dashboard (Phase 14G, `domain/usecases/finance/monthlyOverview.ts`,
+`features/dashboard/finance/`)**: Alle Geldwerte des Dashboards
+(„Kontobewegungen“) kommen **nur aus Buchungen (E7)** – nie aus Bill,
+WasteCost, CostEntry oder Vertragswerten, denn Abrechnungen und Müllgebühren
+werden real vom Girokonto bezahlt und tauchen dort als Buchung auf. Die
+zentrale Projektion aus Phase 9 bleibt unverändert auf `/kostenuebersicht`
+(„erfasste Kosten“); beide zeigen bewusst unterschiedliche Summen.
+`getDashboardData()` liefert nur noch die Haushalts-Karten
+(Vertragsfristen, laufende Vertragskosten mit Soll/Ist-Link, letzte
+Abrechnung, Dokumente); `MonthlyCostCard`/`YearlyCostCard`/
+`CostTrendChart`/`CategoryCostChart`/`DashboardAggregationWarning`/
+`WasteCostsSummaryCard` wurden entfernt.
+
+Kennzahlen (`sumFlows`, O-5): Einnahmen = `income`, Ausgaben = `expense`
+(Erstattung mindert), Gespart = `saving` (Rückfluss mindert), Saldo =
+Einnahmen − Ausgaben − Gespart; Umbuchungen zählen nirgends. Vergleich mit
+dem Vormonat (`compareWithPreviousMonth`) nur, wenn beide Monate
+**vollständig importiert** sind (`isMonthComplete`: jedes Konto mit
+Buchungen im Monat deckt ihn über `coveredMonthsByAccount` aus 14F ganz
+ab) – Einnahmen/Ausgaben in Prozent über `calculatePercentageChange`,
+Saldo/Gespart in Euro (Prozent einer evtl. negativen Basis wäre sinnlos).
+Verlauf (`buildDailySeries`): ein Punkt je Kalendertag mit echten
+Tageswerten und laufenden Summen, als Stufenlinie gezeichnet (keine
+Glättung/Interpolation), im laufenden Monat bis heute; Tippen zeigt die
+Werte eines Tages, `sr-only`-Tabelle der Buchungstage. Kategorien
+(`expensesByGroup`): Ausgaben nach `Category.group` (sonst die Kategorie
+selbst), größte fünf einzeln, Rest „Weitere“ (ein einzelner Rest bleibt
+einzeln), „Ohne Kategorie“ als eigene Gruppe, Gruppen mit Netto ≤ 0 nicht
+im Diagramm. `getFinanceData()` lädt Buchungen/Kategorien/Importe einmal,
+der Monatswechsel rechnet nur im Speicher; Standardmonat = neuester Monat
+mit Buchungen. Ohne Buchungen: Empty State mit „Sparkassen-CSV
+importieren“ und Link zur Kostenübersicht.
+
+Farben: Akzent-Token `--color-accent` app-weit Grün `#0a7f55` (5,0:1 auf
+Weiß, vorher Blau mit 3,65:1); `theme-color`/Manifest ebenso. Gruppenfarben
+(`constants/categoryGroups.ts`): acht Slots einer validierten
+kategorialen Palette (Helligkeitsband, Chroma, Farbsehschwäche geprüft),
+fest je Gruppe für die acht häufigsten Ausgabengruppen, alle übrigen
+neutral grau – Farbe folgt der Gruppe, nie dem Rang, und jede Gruppe ist
+im Diagramm mit Namen, Betrag und Anteil beschriftet. Verlauf: Einnahmen
+Blau, Ausgaben Orange (validiertes Paar).
+
+**Buchungsliste (`/buchungen`, `features/transactions/transactionFilters.ts`)**:
+Suche (Name, Verwendungszweck, Buchungstext, Kategoriename, Betrag),
+Filter Monat/Kategorie (eine Gruppe schließt ihre Kategorien ein, „Ohne
+Kategorie“ = Einnahme/Ausgabe ohne Kategorie)/Art, „Filter zurücksetzen“ –
+reine Funktionen über die einmal geladene Liste, neueste zuerst, 50 je
+Seite („Weitere … anzeigen“). Die Filter stehen in der URL
+(`?monat=&kategorie=&art=&suche=`), damit das Dashboard gefiltert verlinken
+kann und „Zurück“ aus der Detailansicht sie behält. Die Importe stehen
+eingeklappt darunter.
+
+Tests: `financeOverview.test.ts` (O-5, Erstattung/Rückfluss, Vergleich inkl.
+unvollständiger Monate und Vormonat 0, Tagesreihe, Gruppen, Fixture-Test:
+jede Dashboard-Zahl aus den Buchungen nachgerechnet),
+`transactionFilters.test.ts`, `DashboardPage.test.tsx` (Kennzahlen,
+Monatswechsel ohne Neuladen, Empty State, keine Abrechnungs-/Müllsummen),
+`transactions.ui.test.tsx` (Liste, Seiten, Filter aus der URL, Suche,
+ohne Kategorie, keine Treffer), `dashboard.test.ts`.
 
 ## PWA-Regeln
 
