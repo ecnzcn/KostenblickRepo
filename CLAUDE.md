@@ -673,6 +673,8 @@ ausschließlich `getWasteCostSummary()` – keine eigene Berechnungslogik im
 Dashboard-Code. `getDashboardData()` lädt `wasteCostRepository.getAll()`
 zusätzlich zu den bestehenden Repositories und reicht das Ergebnis nur
 durch; die `CostEntry`-basierte Dashboard-Pipeline bleibt unangetastet.
+*(Überholt seit Phase 14G: die Karte ist vom Dashboard entfernt, Müllkosten
+stehen auf `/muell` und in der Kostenübersicht.)*
 
 **Statistik-Integration**: bewusst (noch) nicht vorgenommen. Die
 Statistik-Pipeline (Phase 5) liest bewusst ausschließlich aus
@@ -794,7 +796,9 @@ nicht mehr aufgerufen. Die bestehende `WasteCostsSummaryCard` bleibt
 erhalten (kein Rückbau einer funktionierenden, getesteten Karte), bekommt
 aber den Hinweis „Bereits in den Jahreskosten oben enthalten.", damit nie
 der Eindruck entsteht, die dort gezeigte Müllkosten-Zahl käme zur
-Jahreskosten-Kachel addiert obendrauf.
+Jahreskosten-Kachel addiert obendrauf. *(Überholt seit Phase 14G: das
+Dashboard rechnet nur noch mit Buchungen, `getDashboardData()` liefert
+keine dieser Kostenwerte mehr – siehe „Dashboard (Phase 14G)“.)*
 
 **Statistik-Integration**: bewusst **nicht** vorgenommen. `/statistik`
 liest weiterhin ausschließlich aus `billRepository`/`billItemRepository`
@@ -1124,6 +1128,16 @@ und Abweichungen davon: `docs/specs/phase-14a-entscheidungen.md`
 `.gitattributes` `-text` – nie neu speichern; echte Exporte nie
 committen).
 
+**Kernregel E7 (keine Doppelzählung)**: Die Geldwerte des Dashboards
+kommen **ausschließlich aus Buchungen** (`Transaction`). Vertragswerte sind
+ein Soll und werden nie zu Ausgaben addiert; Abrechnungen, Müllkosten und
+manuelle `CostEntry` bleiben in Abrechnungen, Nebenkosten-Statistik und
+Kostenübersicht („erfasste Kosten“) und erscheinen nicht als Ausgabe im
+Dashboard – vom Konto bezahlt tauchen sie dort bereits als Buchung auf.
+`/statistik` heißt seit 14I „Nebenkosten-Statistik“ (O-9), der
+Navigationspunkt bleibt „Statistik“. Release: V1.2.0 (`RELEASE.md`),
+iPhone-Testanleitung `docs/IPHONE_TEST_1.2.md`.
+
 **Nur lokal**: Konten, Buchungen, Importe, Regeln und Sparziel werden nicht
 synchronisiert. Ihre Entities erweitern nur `PersistedEntity` (kein
 `deletedAt`/`syncVersion`/`userId`) und werden hart gelöscht
@@ -1199,9 +1213,9 @@ die neu entstehenden Kartenpaare in **einer** IndexedDB-Transaktion
 (Fehler → nichts gespeichert); Vorschauen mit Zeilenfehlern oder ohne neue
 Buchungen lassen sich nicht speichern. `undoImport()` löscht die Buchungen
 einer Charge hart und verknüpft den Rest neu – derselbe Export lässt sich
-danach erneut importieren. `/buchungen` zeigt bisher die Importe (mit
+danach erneut importieren. `/buchungen` zeigt die Importe (mit
 „Import rückgängig machen“ nach Bestätigung) und den Hinweis auf fehlende
-Kartenumsätze; die Buchungsliste selbst folgt in 14G.
+Kartenumsätze; seit 14G steht darüber die Buchungsliste (siehe unten).
 
 **Erst-Einordnung** (`classifyBankRow`, bis 14E eigene Regeln bringt):
 Strukturregeln vor Bank-Kategorie – `EIGENE KREDITKARTENABRECHN.`/
@@ -1265,10 +1279,10 @@ Weg, Überweisungen auf eigene Konten zu markieren. Regel löschen lässt
 bereits zugeordnete Buchungen unverändert.
 
 UI: `/buchungen/:id` (Detail mit Zuordnung, Quelle der Zuordnung,
-Kartenpaar-Link, Vorläufig-Hinweis), Liste „Ohne Kategorie“ auf
-`/buchungen`, `/regeln` (Liste, Löschen mit Bestätigung, Erklärung der
-Standardregeln; verlinkt unter „Mehr“). Die vollständige Buchungsliste mit
-Suche/Filtern bleibt 14G.
+Kartenpaar-Link, Vorläufig-Hinweis), `/regeln` (Liste, Löschen mit
+Bestätigung, Erklärung der Standardregeln; verlinkt unter „Mehr“).
+Buchungen ohne Kategorie findet man seit 14G über den Filter „Ohne
+Kategorie“ der Buchungsliste.
 
 Tests: `categorization.test.ts` (Reihenfolge, Priorität, manuell bleibt,
 Vertrag, Eigenes-Konto-Regel, Erstattung, MCC, keine Ausgabekategorie auf
