@@ -1,3 +1,4 @@
+import { sha256Hex } from '../../utils/hash'
 import { getCurrentOwnerId } from '../../services/sync/syncSettings'
 import { ACCEPTED_DOCUMENT_MIME_TYPES, MAX_DOCUMENT_SIZE_BYTES } from '../../constants/files'
 import { documentStorageService } from '../../services/storage/IndexedDbDocumentStorageService'
@@ -29,8 +30,7 @@ export function validateDocumentFile(file: File): string[] {
  * change" check (e.g. after replacing a file) be exact rather than
  * guessed from size/mimeType alone. */
 export async function calculateChecksum(file: File): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return sha256Hex(await file.arrayBuffer())
 }
 
 /** Persists a validated file's bytes via DocumentStorageService and records
