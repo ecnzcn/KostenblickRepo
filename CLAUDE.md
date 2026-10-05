@@ -1384,6 +1384,27 @@ Monatswechsel ohne Neuladen, Empty State, keine Abrechnungs-/Müllsummen),
 `transactions.ui.test.tsx` (Liste, Seiten, Filter aus der URL, Suche,
 ohne Kategorie, keine Treffer), `dashboard.test.ts`.
 
+**Sparziel & Tipps (Phase 14H, `domain/usecases/finance/savingsGoal.ts`,
+`tips.ts`)**: Genau ein Monatsziel (`SavingsGoal`, feste ID `monthly`) in
+IndexedDB – nur lokal, im Backup enthalten, eingestellt unter „Mehr“ →
+„Sparziel“ (`SavingsGoalSettings`, deutsches Betragsformat, > 0 €).
+Fortschritt (`calculateSavingsProgress`, O-5) = (Saldo + Gespart) ÷ Ziel =
+(Einnahmen − Ausgaben) ÷ Ziel, begrenzt auf 0–100 %, abgerundet (99,6 %
+zeigt nie „100 %“); ein negativer Monat ist 0 % und wird ausdrücklich als
+„mehr ausgegeben als eingenommen“ benannt. Dashboard-Karte unter den
+Kennzahlen, ohne Ziel ein Link „Sparziel festlegen“.
+
+Tipps (`buildTips`) sind Regeln über die echten Buchungen/Importe/Verträge
+des gewählten Monats, höchstens drei, in dieser Reihenfolge: fehlende
+Kartenumsätze (vorläufige Kartenabrechnung) → Buchungen ohne Kategorie →
+Vertragsabweichungen und fehlende Abbuchungen (aus
+`buildFixedCostOverview`, 14F) → größte Kategorieänderung zum Vormonat (nur
+wenn beide Monate vollständig importiert sind, ab ±10 % **und** 20 €).
+Trifft keine Regel zu, gibt es keine Tipp-Karte – keine Floskeln. Der
+Hinweis „ohne Kategorie“ steht seitdem nur noch in den Tipps, nicht mehr
+zusätzlich als Banner. Tests: `savingsAndTips.test.ts`,
+`DashboardPage.test.tsx`, `SettingsPage.test.tsx`.
+
 ## PWA-Regeln
 
 - installierbar (Manifest + Icons)
