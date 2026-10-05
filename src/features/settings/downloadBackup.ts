@@ -1,4 +1,5 @@
 import { createBackup, validateBackup } from '../../domain/usecases/backup'
+import { recordBackupCreated } from '../../domain/usecases/backupReminder'
 
 export function backupFileName(now: Date): string {
   return `kostenblick-backup-${now.toISOString().slice(0, 10)}.json`
@@ -18,4 +19,5 @@ export async function downloadBackup(): Promise<void> {
   anchor.download = backupFileName(new Date())
   anchor.click()
   URL.revokeObjectURL(url)
+  recordBackupCreated()
 }
