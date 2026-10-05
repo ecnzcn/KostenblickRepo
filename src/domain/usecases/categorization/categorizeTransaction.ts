@@ -16,7 +16,7 @@ import { GIRO_CARD_SETTLEMENT_TEXT, classifyBankRow } from '../bankImport/classi
  * is a refund that lowers that category's expenses.
  */
 
-export type Assignment = Pick<Transaction, 'categoryId' | 'categorySource' | 'flowType' | 'flowTypeSource' | 'isReversal'>
+export type Assignment = Pick<Transaction, 'categoryId' | 'categorySource' | 'flowType' | 'flowTypeSource' | 'isReversal' | 'contractId'>
 
 export interface CategorizationContext {
   rules: readonly CategoryRule[]
@@ -26,7 +26,7 @@ export interface CategorizationContext {
 
 export function normalizeRuleValue(field: CategoryRule['field'], value: string | undefined): string {
   const text = value ?? ''
-  return field === 'creditorId' || field === 'counterpartyIban'
+  return field === 'creditorId' || field === 'counterpartyIban' || field === 'mandateReference'
     ? text.replace(/\s+/g, '').toUpperCase()
     : text.replace(/\s+/g, ' ').trim().toUpperCase()
 }
@@ -70,42 +70,65 @@ export function categorizeTransaction(transaction: Transaction, context: Categor
   const accountType = context.accountTypes.get(transaction.accountId) ?? 'giro'
   const base = classifyBankRow(transaction, accountType)
   const manualFlow = transaction.flowTypeSource === 'manual'
+  const settlement = isCardSettlement(transaction, accountType)
+  const contractId = linkedContractId(transaction, context, settlement || (manualFlow ? transaction.flowType : base.flowType) !== 'expense')
   const withFlow = (assignment: Omit<Assignment, 'flowType' | 'flowTypeSource'>, flowType: FlowType, flowTypeSource: Assignment['flowTypeSource']): Assignment =>
     manualFlow
       ? { ...assignment, flowType: transaction.flowType, flowTypeSource: 'manual' }
       : { ...assignment, flowType, flowTypeSource }
 
-  if (transaction.categorySource === 'manual' || (!manualFlow && isCardSettlement(transaction, accountType))) {
+  if (transaction.categorySource === 'manual' || (!manualFlow && settlement)) {
     return {
       categoryId: transaction.categoryId,
       categorySource: transaction.categorySource,
       flowType: transaction.flowType,
       flowTypeSource: transaction.flowTypeSource,
       isReversal: base.isReversal,
+      contractId,
     }
   }
 
-  const contract = transaction.contractId ? context.contracts.find((entry) => entry.id === transaction.contractId && !entry.deletedAt) : undefined
+  const contract = contractId ? findContract(context, contractId) : undefined
   if (contract) {
-    return withFlow({ categoryId: contract.categoryId, categorySource: 'contract', isReversal: base.isReversal }, flowForCategory(contract.categoryId), 'auto')
+    return withFlow(
+      { categoryId: contract.categoryId, categorySource: 'contract', isReversal: base.isReversal, contractId },
+      flowForCategory(contract.categoryId),
+      'auto',
+    )
   }
 
-  const rule = sortRules(context.rules).find((entry) => matchesRule(entry, transaction))
+  const rule = sortRules(context.rules.filter((entry) => !entry.contractId)).find((entry) => matchesRule(entry, transaction))
   if (rule) {
-    if (rule.flowType === 'transfer') return withFlow({ categorySource: 'rule', isReversal: base.isReversal }, 'transfer', 'rule')
+    if (rule.flowType === 'transfer') return withFlow({ categorySource: 'rule', isReversal: base.isReversal, contractId }, 'transfer', 'rule')
     const categoryId = rule.flowType === 'saving' ? (rule.categoryId ?? SAVINGS_CATEGORY_ID) : rule.categoryId
     if (categoryId) {
-      return withFlow({ categoryId, categorySource: 'rule', isReversal: base.isReversal }, rule.flowType ?? flowForCategory(categoryId), 'rule')
+      return withFlow({ categoryId, categorySource: 'rule', isReversal: base.isReversal, contractId }, rule.flowType ?? flowForCategory(categoryId), 'rule')
     }
   }
 
   const structural = base.categorySource === 'rule' || base.flowType === 'transfer' || base.flowType === 'saving'
   if (!structural && base.flowType === 'expense') {
     const suggestion = standardSuggestion(transaction, accountType)
-    if (suggestion) return withFlow({ categoryId: suggestion, categorySource: 'rule', isReversal: base.isReversal }, 'expense', 'auto')
+    if (suggestion) return withFlow({ categoryId: suggestion, categorySource: 'rule', isReversal: base.isReversal, contractId }, 'expense', 'auto')
   }
 
-  return withFlow({ categoryId: base.categoryId, categorySource: base.categorySource, isReversal: base.isReversal }, base.flowType, 'auto')
+  return withFlow({ categoryId: base.categoryId, categorySource: base.categorySource, isReversal: base.isReversal, contractId }, base.flowType, 'auto')
+}
+
+function findContract(context: CategorizationContext, id: string): Contract | undefined {
+  return context.contracts.find((entry) => entry.id === id && !entry.deletedAt)
+}
+
+/** The contract a booking belongs to: an existing link stays; otherwise a
+ * contract link rule may link an expense booking (14F). A link to a
+ * contract that no longer exists stays untouched unless a rule relinks. */
+function linkedContractId(transaction: Transaction, context: CategorizationContext, notLinkable: boolean): string | undefined {
+  if (transaction.contractId && findContract(context, transaction.contractId)) return transaction.contractId
+  if (notLinkable) return transaction.contractId
+  const rule = sortRules(context.rules.filter((entry) => entry.contractId && findContract(context, entry.contractId))).find((entry) =>
+    matchesRule(entry, transaction),
+  )
+  return rule?.contractId ?? transaction.contractId
 }
 
 function sameAssignment(transaction: Transaction, assignment: Assignment): boolean {
@@ -114,7 +137,8 @@ function sameAssignment(transaction: Transaction, assignment: Assignment): boole
     transaction.categorySource === assignment.categorySource &&
     transaction.flowType === assignment.flowType &&
     transaction.flowTypeSource === assignment.flowTypeSource &&
-    Boolean(transaction.isReversal) === Boolean(assignment.isReversal)
+    Boolean(transaction.isReversal) === Boolean(assignment.isReversal) &&
+    transaction.contractId === assignment.contractId
   )
 }
 
@@ -123,6 +147,7 @@ export function withAssignment(transaction: Transaction, assignment: Assignment,
   const next: Transaction = { ...transaction, ...assignment, updatedAt: now }
   if (next.categoryId === undefined) delete next.categoryId
   if (!next.isReversal) delete next.isReversal
+  if (next.contractId === undefined) delete next.contractId
   if (next.flowType !== 'transfer') delete next.transferPairId
   return next
 }

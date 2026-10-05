@@ -98,6 +98,7 @@ export const RULE_FIELD_LABELS: Record<CategoryRuleField, string> = {
   counterpartyIban: 'IBAN der Gegenpartei',
   counterpartyName: 'Name der Gegenpartei',
   purpose: 'Verwendungszweck',
+  mandateReference: 'Mandatsreferenz',
 }
 
 /** Possible rules for "Immer so zuordnen?", most precise first: a creditor
@@ -140,6 +141,20 @@ export function ruleTarget(choice: CreateRuleInput['choice']): Pick<CategoryRule
  * bookings changed. */
 export async function createRule(input: CreateRuleInput, now: Date = new Date()): Promise<number> {
   if (!input.pattern.trim()) throw new Error('Bitte gib an, worauf die Regel passen soll.')
+  return saveRuleAndApply(
+    { field: input.field, matchType: input.matchType, pattern: input.pattern.trim(), ...ruleTarget(input.choice) },
+    input.applyToExisting,
+    now,
+    'Die Regel konnte nicht gespeichert werden. Es wurde nichts verändert.',
+  )
+}
+
+type NewRule = Pick<CategoryRule, 'field' | 'matchType' | 'pattern' | 'categoryId' | 'flowType' | 'contractId'>
+
+/** Shared by category rules (14E) and contract link rules (14F): one
+ * IndexedDB transaction stores the rule, re-categorizes the bookings it
+ * matches and re-runs the card settlement pairing. */
+export async function saveRuleAndApply(fields: NewRule, applyToExisting: boolean, now: Date, failureMessage: string): Promise<number> {
   const nowIso = now.toISOString()
   const { contracts } = await loadContext()
   const db = await getDatabase()
@@ -150,19 +165,19 @@ export async function createRule(input: CreateRuleInput, now: Date = new Date())
     const existing = await rulesStore.getAll()
     const rule: CategoryRule = {
       id: generateId(),
-      field: input.field,
-      matchType: input.matchType,
-      pattern: input.pattern.trim(),
-      ...ruleTarget(input.choice),
+      ...fields,
       priority: Math.max(0, ...existing.map((entry) => entry.priority)) + 1,
       createdFrom: 'manual',
       createdAt: nowIso,
       updatedAt: nowIso,
     }
+    for (const key of ['categoryId', 'flowType', 'contractId'] as const) {
+      if (rule[key] === undefined) delete rule[key]
+    }
     await rulesStore.put(rule)
 
     let changed = 0
-    if (input.applyToExisting) {
+    if (applyToExisting) {
       const transactions = tx.objectStore(STORE_NAMES.transactions)
       const accounts = await tx.objectStore(STORE_NAMES.accounts).getAll()
       const all = await transactions.getAll()
@@ -182,7 +197,7 @@ export async function createRule(input: CreateRuleInput, now: Date = new Date())
     } catch {
       // already aborted
     }
-    throw new Error('Die Regel konnte nicht gespeichert werden. Es wurde nichts verändert.')
+    throw new Error(failureMessage)
   }
 }
 
@@ -197,7 +212,15 @@ export interface RuleOverviewEntry {
   target: string
 }
 
-export function describeRuleTarget(rule: Pick<CategoryRule, 'categoryId' | 'flowType'>, categories: readonly Category[]): string {
+export function describeRuleTarget(
+  rule: Pick<CategoryRule, 'categoryId' | 'flowType' | 'contractId'>,
+  categories: readonly Category[],
+  contracts: readonly Contract[] = [],
+): string {
+  if (rule.contractId) {
+    const contract = contracts.find((entry) => entry.id === rule.contractId && !entry.deletedAt)
+    return contract ? `Vertrag ${contract.provider}` : 'Vertrag nicht mehr vorhanden'
+  }
   if (rule.flowType === 'transfer') return 'Umbuchung (zählt nicht)'
   if (rule.flowType === 'saving') return 'Sparen'
   return categories.find((category) => category.id === rule.categoryId)?.name ?? 'Unbekannte Kategorie'
@@ -208,8 +231,8 @@ export function describeRule(rule: Pick<CategoryRule, 'field' | 'matchType' | 'p
 }
 
 export async function listRules(): Promise<RuleOverviewEntry[]> {
-  const [rules, categories] = await Promise.all([categoryRuleRepository.getAll(), categoryRepository.getAll()])
-  return sortRules(rules).map((rule) => ({ rule, description: describeRule(rule), target: describeRuleTarget(rule, categories) }))
+  const [rules, categories, contracts] = await Promise.all([categoryRuleRepository.getAll(), categoryRepository.getAll(), contractRepository.getAll()])
+  return sortRules(rules).map((rule) => ({ rule, description: describeRule(rule), target: describeRuleTarget(rule, categories, contracts) }))
 }
 
 export interface TransactionDetail {

@@ -97,6 +97,50 @@ describe('categorizeTransaction', () => {
     expect(categorizeTransaction(tx({ contractId: 'gone', bankCategory: 'Telekommunikation' }), context()).categorySource).toBe('bank')
   })
 
+  describe('contract link rules (14F)', () => {
+    const contract = { id: 'c1', categoryId: 'telecom', deletedAt: null } as Contract
+    const link = rule({ id: 'link', field: 'mandateReference', matchType: 'equals', pattern: 'mandat 0007', contractId: 'c1', priority: 1 })
+
+    it('links a matching expense and gives it the contract category', () => {
+      expect(categorizeTransaction(tx({ mandateReference: 'MANDAT0007' }), context([link], [contract]))).toMatchObject({
+        contractId: 'c1',
+        categoryId: 'telecom',
+        categorySource: 'contract',
+      })
+    })
+
+    it('links but keeps a manual category', () => {
+      const manual = tx({ mandateReference: 'MANDAT 0007', categoryId: 'leisure', categorySource: 'manual' })
+      expect(categorizeTransaction(manual, context([link], [contract]))).toMatchObject({ contractId: 'c1', categoryId: 'leisure', categorySource: 'manual' })
+    })
+
+    it('never links income, transfers or card statements', () => {
+      const income = tx({ amount: 20, mandateReference: 'MANDAT 0007' })
+      expect(categorizeTransaction(income, context([link], [contract])).contractId).toBeUndefined()
+      const settlement = tx({ mandateReference: 'MANDAT 0007', bookingText: 'EIGENE KREDITKARTENABRECHN.' })
+      expect(categorizeTransaction(settlement, context([link], [contract])).contractId).toBeUndefined()
+    })
+
+    it('ignores a link rule of a deleted contract and is not a category rule', () => {
+      const gone = rule({ ...link, contractId: 'gone' })
+      expect(categorizeTransaction(tx({ mandateReference: 'MANDAT 0007', bankCategory: 'Telekommunikation' }), context([gone], [contract]))).toMatchObject({
+        categorySource: 'bank',
+      })
+      expect(categorizeTransaction(tx({ mandateReference: 'MANDAT 0007' }), context([gone], [contract])).contractId).toBeUndefined()
+    })
+
+    it('keeps an existing link even when another contract rule matches', () => {
+      const other = { id: 'c2', categoryId: 'electricity', deletedAt: null } as Contract
+      const otherLink = rule({ ...link, id: 'other', contractId: 'c2', priority: 5 })
+      expect(categorizeTransaction(tx({ mandateReference: 'MANDAT 0007', contractId: 'c1' }), context([otherLink], [contract, other])).contractId).toBe('c1')
+    })
+
+    it('recategorize reports a newly linked booking as a change', () => {
+      const [changed] = recategorize([tx({ mandateReference: 'MANDAT 0007' })], context([link], [contract]), 'now')
+      expect(changed).toMatchObject({ contractId: 'c1', updatedAt: 'now' })
+    })
+  })
+
   it('marks transfers to an own account via a flow rule', () => {
     const own = rule({ field: 'counterpartyIban', matchType: 'equals', pattern: 'DE99000000000000000013', flowType: 'saving' })
     expect(categorizeTransaction(tx({ counterpartyIban: 'DE99000000000000000013', bankCategory: 'Mobilität' }), context([own]))).toMatchObject({

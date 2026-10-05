@@ -248,15 +248,18 @@ export interface ImportBatch extends PersistedEntity {
   counts: ImportBatchCounts
 }
 
-export type CategoryRuleField = 'counterpartyName' | 'purpose' | 'creditorId' | 'counterpartyIban'
+export type CategoryRuleField = 'counterpartyName' | 'purpose' | 'creditorId' | 'counterpartyIban' | 'mandateReference'
 
 export interface CategoryRule extends PersistedEntity {
   field: CategoryRuleField
   matchType: 'contains' | 'equals'
   pattern: string
-  /** At least one of categoryId / flowType is set. */
+  /** At least one of categoryId / flowType / contractId is set. */
   categoryId?: string
   flowType?: FlowType
+  /** A contract link (14F): matching expense bookings belong to this
+   * contract. May point to a contract that no longer exists - ignored then. */
+  contractId?: string
   priority: number
   createdFrom: 'manual' | 'seed'
 }
