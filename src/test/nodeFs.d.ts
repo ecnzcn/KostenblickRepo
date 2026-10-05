@@ -2,5 +2,5 @@
 // one function is declared - the app's tsconfig deliberately has no Node
 // types, so app code cannot start relying on Node APIs.
 declare module 'node:fs' {
-  export function readFileSync(path: URL): Uint8Array
+  export function readFileSync(path: URL | string): Uint8Array<ArrayBuffer>
 }
