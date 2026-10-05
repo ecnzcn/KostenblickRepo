@@ -1,16 +1,25 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { HashRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardPage } from './DashboardPage'
 import type { DashboardData } from './dashboard.types'
+import { DEFAULT_CATEGORIES } from '../../constants/categories'
+import type { ImportBatch, Transaction } from '../../domain/models/entities'
+import type { FinanceData } from '../../domain/usecases/finance/monthlyOverview'
 import { formatCurrency } from '../../utils/formatters'
 
-const { getDashboardDataMock } = vi.hoisted(() => ({
+const { getDashboardDataMock, getFinanceDataMock } = vi.hoisted(() => ({
   getDashboardDataMock: vi.fn(),
+  getFinanceDataMock: vi.fn(),
 }))
 
 vi.mock('../../domain/usecases/dashboard', () => ({
   getDashboardData: getDashboardDataMock,
+}))
+
+vi.mock('../../domain/usecases/finance/monthlyOverview', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../domain/usecases/finance/monthlyOverview')>()),
+  getFinanceData: getFinanceDataMock,
 }))
 
 function renderPage() {
@@ -34,33 +43,13 @@ function money(amount: number): string {
 }
 
 const emptyData: DashboardData = {
-  currentMonthCost: 0,
-  previousMonthCost: 0,
-  currentMonthChangePercent: null,
-  currentYearCost: 0,
-  currentYearChangePercent: null,
-  monthlyCosts: [{ month: '2026-09', amount: 0 }],
-  categoryCosts: [],
   upcomingContracts: [],
   documentsSummary: { total: 0, needsReview: 0 },
-  wasteCostsSummary: { year: 2026, total: 0, byCategory: [] },
   runningContractCosts: { monthly: 0, yearly: 0 },
-  currentYearWarnings: [],
 }
 
 const populatedData: DashboardData = {
   userDisplayName: 'Anna',
-  currentMonthCost: 842,
-  previousMonthCost: 300,
-  currentMonthChangePercent: 180.7,
-  currentYearCost: 1142,
-  previousYearCost: 800,
-  currentYearChangePercent: 42.75,
-  monthlyCosts: [
-    { month: '2026-08', amount: 300 },
-    { month: '2026-09', amount: 842 },
-  ],
-  categoryCosts: [{ categoryId: 'heating', categoryName: 'Heizung', categoryIcon: '🔥', amount: 720 }],
   upcomingContracts: [
     {
       contractId: 'c1',
@@ -79,53 +68,168 @@ const populatedData: DashboardData = {
     importedAt: '2026-09-16T00:00:00.000Z',
   },
   documentsSummary: { total: 3, needsReview: 1 },
-  wasteCostsSummary: {
-    year: 2026,
-    total: 186.4,
-    byCategory: [{ category: 'residual', amount: 186.4 }],
-    previousYearTotal: 174.2,
-    change: 12.2,
-    changePercent: 7,
-  },
   runningContractCosts: { monthly: 287.4, yearly: 3448.8 },
-  currentYearWarnings: [],
 }
+
+function booking(id: string, bookingDate: string, amount: number, overrides: Partial<Transaction> = {}): Transaction {
+  return {
+    id,
+    accountId: 'giro',
+    bookingDate,
+    amount,
+    currency: 'EUR',
+    counterpartyName: `Gegenpartei ${id}`,
+    purpose: '',
+    bookingText: '',
+    categorySource: 'rule',
+    flowType: amount > 0 ? 'income' : 'expense',
+    flowTypeSource: 'auto',
+    importBatchId: 'b',
+    dedupeKey: id,
+    createdAt: '',
+    updatedAt: '',
+    ...overrides,
+  }
+}
+
+const batch: ImportBatch = {
+  id: 'b',
+  accountId: 'giro',
+  filename: 'giro.csv',
+  fileChecksum: '',
+  importedAt: '',
+  periodFrom: '2026-07-01',
+  periodTo: '2026-08-31',
+  counts: { total: 5, new: 5, duplicates: 0, skippedPending: 0 },
+  createdAt: '',
+  updatedAt: '',
+}
+
+const transactions = [
+  booking('j1', '2026-07-01', 2500, { categoryId: 'salary' }),
+  booking('j2', '2026-07-03', -1000, { categoryId: 'housing' }),
+  booking('a1', '2026-08-01', 2850, { categoryId: 'salary', counterpartyName: 'Arbeitgeber' }),
+  booking('a2', '2026-08-02', -750, { categoryId: 'housing', counterpartyName: 'Vermieter' }),
+  booking('a3', '2026-08-12', -48.32, { categoryId: 'groceries', counterpartyName: 'Edeka' }),
+  booking('a4', '2026-08-20', -300, { flowType: 'saving', categoryId: 'savings', counterpartyName: 'Tagesgeld' }),
+  booking('a5', '2026-08-22', -20),
+]
+
+const financeData: FinanceData = {
+  transactions,
+  categories: DEFAULT_CATEGORIES,
+  batches: [batch],
+  months: ['2026-08', '2026-07'],
+  defaultMonth: '2026-08',
+}
+
+const noFinanceData: FinanceData = { transactions: [], categories: DEFAULT_CATEGORIES, batches: [], months: [] }
 
 describe('DashboardPage', () => {
   beforeEach(() => {
     getDashboardDataMock.mockReset()
+    getFinanceDataMock.mockReset()
+    getFinanceDataMock.mockResolvedValue(financeData)
   })
 
-  it('renders the dashboard header immediately, then resolves loading', async () => {
+  it('renders the header immediately, then resolves loading', async () => {
     getDashboardDataMock.mockResolvedValue(emptyData)
     renderPage()
-    expect(screen.getByRole('heading', { name: 'Kostenblick' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Hallo!' })).toBeInTheDocument()
     expect(screen.getByRole('status')).toBeInTheDocument()
     await waitForLoadingToFinish()
   })
 
-  it('shows the empty states for every section when there is no data', async () => {
-    getDashboardDataMock.mockResolvedValue(emptyData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText(/Noch keine Kostendaten vorhanden\./)).toBeInTheDocument()
-    expect(screen.getByText('Noch keine Kosten vorhanden.')).toBeInTheDocument()
-    expect(screen.getByText('Keine anstehenden Vertragsfristen')).toBeInTheDocument()
-    expect(screen.getByText('Noch keine Nebenkostenabrechnung importiert.')).toBeInTheDocument()
-  })
-
-  it('renders real aggregated data when available', async () => {
+  it('shows the month figures from the bookings (O-5) with the change to the previous month', async () => {
     getDashboardDataMock.mockResolvedValue(populatedData)
     renderPage()
     await waitForLoadingToFinish()
 
-    expect(screen.getByText(/^Guten .*, Anna$/)).toBeInTheDocument()
-    expect(screen.getByText(money(842))).toBeInTheDocument()
-    expect(screen.getByText(money(1142))).toBeInTheDocument()
-    expect(screen.getByText('Heizung')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Hallo, Anna!' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toHaveDisplayValue('August 2026')
+    const kpis = within(screen.getByRole('region', { name: 'Kennzahlen' }))
+    expect(kpis.getByText(money(2850))).toBeInTheDocument()
+    expect(kpis.getByText(money(818.32))).toBeInTheDocument()
+    expect(kpis.getByText(money(300))).toBeInTheDocument()
+    // Saldo = 2.850 − 818,32 − 300
+    expect(kpis.getByText(money(1731.68))).toBeInTheDocument()
+    expect(kpis.getByText('↗ +14,0 % vs. Vormonat')).toBeInTheDocument()
+    expect(kpis.getByText('↘ -18,2 % vs. Vormonat')).toBeInTheDocument()
+  })
+
+  it('shows category groups, recent bookings and a hint for uncategorized bookings', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    const groups = within(screen.getByRole('list', { name: 'Ausgaben nach Kategorie' }))
+    expect(groups.getByText('Wohnen')).toBeInTheDocument()
+    expect(groups.getByText('Lebensmittel')).toBeInTheDocument()
+    expect(groups.getByText('Ohne Kategorie')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Edeka/ })).toHaveAttribute('href', '#/buchungen/a3')
+    expect(screen.getByRole('link', { name: 'Alle anzeigen' })).toHaveAttribute('href', '#/buchungen?monat=2026-08')
+    expect(screen.getByText(/1 Buchung ist noch ohne Kategorie/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Zuordnen' })).toHaveAttribute('href', '#/buchungen?monat=2026-08&kategorie=ohne')
+  })
+
+  it('switches the month without reloading', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '2026-07' } })
+    const kpis = within(screen.getByRole('region', { name: 'Kennzahlen' }))
+    expect(kpis.getByText(money(2500))).toBeInTheDocument()
+    expect(kpis.getByText('Keine Buchungen im Vormonat – kein Vergleich.')).toBeInTheDocument()
+    expect(getFinanceDataMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('without bookings explains the import and links the cost overview', async () => {
+    getDashboardDataMock.mockResolvedValue(emptyData)
+    getFinanceDataMock.mockResolvedValue(noFinanceData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Noch keine Kontobewegungen')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Sparkassen-CSV importieren' })).toHaveAttribute('href', '#/buchungen/import')
+    expect(screen.getByRole('link', { name: 'Erfasste Kosten in der Kostenübersicht' })).toHaveAttribute('href', '#/kostenuebersicht')
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('never shows bill, waste or manual cost totals as money figures (E7)', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.queryByText('Müllkosten')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Jahreskosten/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Erfasste Kosten →' })).toHaveAttribute('href', '#/kostenuebersicht')
+  })
+
+  it('shows the household cards', async () => {
+    getDashboardDataMock.mockResolvedValue(populatedData)
+    renderPage()
+    await waitForLoadingToFinish()
+
     expect(screen.getByText('Internet')).toBeInTheDocument()
     expect(screen.getByText('Jahresabrechnung 2025')).toBeInTheDocument()
+    expect(screen.getByText('Nächste Vertragsfristen')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Alle Erinnerungen' })).toHaveAttribute('href', '#/erinnerungen')
+    expect(screen.getByText('3 Dokumente')).toBeInTheDocument()
+    expect(screen.getByText('1 benötigen Prüfung')).toBeInTheDocument()
+    expect(screen.getByText(`${money(287.4)} / Monat`)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Soll/Ist ansehen' })).toHaveAttribute('href', '#/vertraege/fixkosten')
+  })
+
+  it('shows the empty household states', async () => {
+    getDashboardDataMock.mockResolvedValue(emptyData)
+    renderPage()
+    await waitForLoadingToFinish()
+
+    expect(screen.getByText('Keine anstehenden Vertragsfristen')).toBeInTheDocument()
+    expect(screen.getByText('Noch keine Nebenkostenabrechnung importiert.')).toBeInTheDocument()
+    expect(screen.getByText('Noch keine Dokumente vorhanden.')).toBeInTheDocument()
+    expect(screen.getByText('Keine aktiven Verträge mit laufenden Kosten.')).toBeInTheDocument()
   })
 
   it('shows an error state on failure and recovers via retry', async () => {
@@ -135,11 +239,10 @@ describe('DashboardPage', () => {
     await waitForLoadingToFinish()
 
     expect(screen.getByText('Die Kostendaten konnten nicht geladen werden.')).toBeInTheDocument()
-
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
     await waitForLoadingToFinish()
 
-    expect(screen.getByText(money(842))).toBeInTheDocument()
+    expect(screen.getByText('Jahresabrechnung 2025')).toBeInTheDocument()
     expect(getDashboardDataMock).toHaveBeenCalledTimes(2)
   })
 
@@ -151,111 +254,5 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: '+ Abrechnung' })).toHaveAttribute('href', '#/abrechnungen/neu')
     expect(screen.getByRole('link', { name: '+ Vertrag' })).toHaveAttribute('href', '#/vertraege/neu')
     expect(screen.getByRole('link', { name: 'Kosten erfassen' })).toHaveAttribute('href', '#/kosten/neu')
-  })
-
-  it('links "Nächste Vertragsfristen" to the reminders page, not the contracts list', async () => {
-    getDashboardDataMock.mockResolvedValue(populatedData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText('Nächste Vertragsfristen')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Alle Erinnerungen' })).toHaveAttribute('href', '#/erinnerungen')
-  })
-
-  it('shows the documents summary, including how many need review', async () => {
-    getDashboardDataMock.mockResolvedValue(populatedData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText('3 Dokumente')).toBeInTheDocument()
-    expect(screen.getByText('1 benötigen Prüfung')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Alle Dokumente' })).toHaveAttribute('href', '#/dokumente')
-  })
-
-  it('shows an empty documents state when there are none', async () => {
-    getDashboardDataMock.mockResolvedValue(emptyData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText('Noch keine Dokumente vorhanden.')).toBeInTheDocument()
-  })
-
-  it('shows the waste costs summary with the year-over-year change', async () => {
-    getDashboardDataMock.mockResolvedValue(populatedData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText('Müllkosten')).toBeInTheDocument()
-    expect(screen.getByText(money(186.4))).toBeInTheDocument()
-    expect(screen.getByText(/\+7,0 % gegenüber 2025/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Müllkosten anzeigen' })).toHaveAttribute('href', '#/muell')
-  })
-
-  it('shows an empty waste costs state when there are none for the current year', async () => {
-    getDashboardDataMock.mockResolvedValue(emptyData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText(/Noch keine Müllkosten für \d+ erfasst\./)).toBeInTheDocument()
-  })
-
-  it('shows the running contract costs, separate from the actual-cost cards', async () => {
-    getDashboardDataMock.mockResolvedValue(populatedData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText('Laufende Vertragskosten')).toBeInTheDocument()
-    expect(screen.getByText(`${money(287.4)} / Monat`)).toBeInTheDocument()
-    expect(screen.getByText(`${money(3448.8)} / Jahr`)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Verträge anzeigen' })).toHaveAttribute('href', '#/vertraege')
-  })
-
-  it('shows an empty state for running contract costs when there are no active contracts', async () => {
-    getDashboardDataMock.mockResolvedValue(emptyData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByText('Keine aktiven Verträge mit laufenden Kosten.')).toBeInTheDocument()
-  })
-
-  it('links to the central cost overview and clarifies the waste card is already part of the totals above', async () => {
-    getDashboardDataMock.mockResolvedValue(populatedData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByRole('link', { name: 'Kostenübersicht →' })).toHaveAttribute('href', '#/kostenuebersicht')
-    expect(screen.getByText('Bereits in den Jahreskosten oben enthalten.')).toBeInTheDocument()
-  })
-
-  it('shows no aggregation warning when there are none for the current year', async () => {
-    getDashboardDataMock.mockResolvedValue(populatedData)
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.queryByText('⚠ Möglicher Überschneidungsfall')).not.toBeInTheDocument()
-  })
-
-  it('shows a compact aggregation warning with a link to the cost overview when the year has a possible duplicate', async () => {
-    getDashboardDataMock.mockResolvedValue({
-      ...populatedData,
-      currentYearWarnings: [
-        {
-          type: 'possible_duplicate_waste',
-          year: 2026,
-          description:
-            'Möglicher Überschneidungsfall: Für 2026 wurden Müllkosten sowohl innerhalb einer Abrechnung als auch separat unter Müllkosten erfasst. Das kann, muss aber nicht dieselbe Kostenposition doppelt sein - bitte prüfen Sie, ob dieselbe Ausgabe bereits an anderer Stelle berücksichtigt wurde.',
-        },
-      ],
-    })
-    renderPage()
-    await waitForLoadingToFinish()
-
-    expect(screen.getByRole('alert')).toHaveTextContent('⚠ Möglicher Überschneidungsfall')
-    // The Dashboard hint itself must not claim a confirmed or exact duplicate.
-    expect(screen.queryByText(/wurden doppelt gezählt/)).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Details in der Kostenübersicht' })).toHaveAttribute(
-      'href',
-      '#/kostenuebersicht',
-    )
   })
 })

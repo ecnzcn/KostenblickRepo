@@ -23,7 +23,7 @@ export function RunningContractCostsCard({ costs }: RunningContractCostsCardProp
           <p className="text-lg font-semibold text-neutral-900">{formatCurrency(costs.monthly)} / Monat</p>
           <p className="text-sm text-neutral-500">{formatCurrency(costs.yearly)} / Jahr</p>
           <p className="mt-1 text-xs text-neutral-400">
-            Vertraglich vereinbart - nicht in den tatsächlichen Kosten oben enthalten.
+            Vertraglich vereinbart – zählt nicht zu den Ausgaben.
           </p>
         </div>
       )}

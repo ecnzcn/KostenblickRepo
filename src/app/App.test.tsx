@@ -14,7 +14,7 @@ function renderApp() {
 describe('App', () => {
   it('renders the dashboard on the home route by default', () => {
     renderApp()
-    expect(screen.getByRole('heading', { name: 'Kostenblick' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Hallo!' })).toBeInTheDocument()
   })
 
   it('renders all items in the bottom navigation', () => {
