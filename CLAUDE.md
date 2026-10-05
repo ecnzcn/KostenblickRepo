@@ -1280,6 +1280,47 @@ den Fixtures, Rückgängig + erneuter Import, Atomizität),
 `transactions.ui.test.tsx` (Vorschau, Speichern, Abbrechen, Fehlerdatei,
 bereits importiert, zweite Datei, Rückgängig, Mehr-Link, Backup-Hinweis).
 
+**Fixkosten & Verträge (Phase 14F, `domain/usecases/fixedCosts/`)**:
+Eine Vertragsverknüpfung ist eine `CategoryRule` mit `contractId` (Feld
+`mandateReference` > `creditorId` > `counterpartyName`, immer `equals`);
+die Buchung trägt `Transaction.contractId`, der Vertrag nie einen Verweis
+auf Buchungen. Die Engine verknüpft nur Ausgaben (keine Einnahmen,
+Umbuchungen, Kartenabrechnungen); eine bestehende Verknüpfung bleibt,
+Vertragsregeln sind keine Kategorieregeln, Regeln gelöschter Verträge
+werden ignoriert. Verknüpfte Buchungen bekommen die Vertragskategorie
+(manuelle Kategorie bleibt). `updateContract`/`deleteContract` rufen
+`refreshContractBookings()` – nach dem Löschen bleibt der tote Verweis
+(„Vertrag nicht mehr vorhanden“), die Kategorie kommt wieder aus den
+übrigen Regeln. Per Sync geänderte Verträge wirken erst bei der nächsten
+Neuberechnung (Import/Regel).
+
+`contractLinks.ts`: `suggestContractLinks()` (Gruppen nach dem genauesten
+Merkmal; Vorschlag nur bei Anbietername im Namen/Zweck oder ≥ 2 Monaten mit
+±25 % des Monatswerts – nichts wird ohne Bestätigung verknüpft),
+`linkContract()` (über `saveRuleAndApply`, eine Transaktion, auch aus der
+Buchungsdetailseite), `unlinkContract()` (Regeln + Verweise weg, Buchungen
+neu kategorisiert). `contractComparison.ts` (rein): Soll = Vertragswert,
+Ist = Netto der verknüpften Buchungen (Rücklastschrift mindert). Rhythmus
+aus den Abbuchungsmonaten (untere Median-Lücke ≤ 1 monatlich, 11–13
+jährlich, sonst unregelmäßig ohne Soll-Vergleich; Einzelbuchung nach
+Betrag). „Abbuchung fehlt“ nur in einem vollständig importierten Monat
+(`coveredMonthsByAccount`: Monat liegt ganz in den zusammengeführten
+Import-Zeiträumen **jedes** Kontos der Buchungen) nach der ersten
+verknüpften Abbuchung und innerhalb der Vertragslaufzeit; Abweichung auf
+den Cent genau. `buildFixedCostOverview()`: Soll-Summe der im Monat
+aktiven Verträge vs. Ist-Summe der verknüpften Abbuchungen – **Soll fließt
+nie in Ausgaben ein (E7)**. Standardmonat = neuester vollständig
+importierter Monat.
+
+UI: Abschnitt „Abbuchungen“ auf `/vertraege/:id` (Vorschläge mit
+„Zuordnen“, Monatsliste „erwartet …, abgebucht …“, Verknüpfung aufheben),
+„Vertrag zuordnen“ auf `/buchungen/:id`, `/vertraege/fixkosten`
+(Monatswahl, Soll/Ist, Status je Vertrag; verlinkt von `/vertraege` und der
+Dashboard-Karte „Laufende Vertragskosten“), `/regeln` zeigt „→ Vertrag …“.
+Tests: `fixedCosts.test.ts` (rein), `contractLinks.test.ts` (IndexedDB mit
+Fixture, keine syncQueue-Einträge), `categorization.test.ts`
+(Vertragsregeln), `fixedCosts.ui.test.tsx`.
+
 ## PWA-Regeln
 
 - installierbar (Manifest + Icons)
