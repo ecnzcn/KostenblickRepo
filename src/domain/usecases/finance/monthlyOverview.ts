@@ -1,11 +1,13 @@
 import { OTHER_GROUPS_ID, UNCATEGORIZED_GROUP_ID } from '../../../constants/categoryGroups'
-import type { Category, ImportBatch, Transaction } from '../../models/entities'
+import type { Category, Contract, ImportBatch, SavingsGoal, Transaction } from '../../models/entities'
 import { categoryRepository } from '../../repositories/categories'
-import { importBatchRepository, transactionRepository } from '../../repositories/financeRepositories'
+import { importBatchRepository, savingsGoalRepository, transactionRepository } from '../../repositories/financeRepositories'
+import { contractRepository } from '../../repositories/indexedDbRepositories'
 import { roundToCents } from '../../../utils/money'
 import { coverageFromBatches, coveredMonthsByAccount } from '../fixedCosts/contractComparison'
 import { addMonths, lastDayOf, monthOf, type MonthKey } from '../fixedCosts/months'
 import { calculatePercentageChange } from '../percentageChange'
+import { SAVINGS_GOAL_ID } from './savingsGoal'
 
 /**
  * Phase 14G: the dashboard's money figures, computed only from bookings
@@ -211,6 +213,9 @@ export interface FinanceData {
   transactions: Transaction[]
   categories: Category[]
   batches: ImportBatch[]
+  /** For the contract tips (14H) - contract values never enter a sum here. */
+  contracts: Contract[]
+  savingsGoal?: SavingsGoal
   /** Months with bookings, newest first. */
   months: MonthKey[]
   defaultMonth?: MonthKey
@@ -245,11 +250,13 @@ export function buildFinanceOverview(data: FinanceData, month: MonthKey, today: 
 }
 
 export async function getFinanceData(): Promise<FinanceData> {
-  const [transactions, categories, batches] = await Promise.all([
+  const [transactions, categories, batches, contracts, savingsGoal] = await Promise.all([
     transactionRepository.getAll(),
     categoryRepository.getAll(),
     importBatchRepository.getAll(),
+    contractRepository.getAll(),
+    savingsGoalRepository.getById(SAVINGS_GOAL_ID),
   ])
   const months = bookingMonths(transactions)
-  return { transactions, categories, batches, months, defaultMonth: months[0] }
+  return { transactions, categories, batches, contracts: contracts.filter((contract) => !contract.deletedAt), savingsGoal, months, defaultMonth: months[0] }
 }
