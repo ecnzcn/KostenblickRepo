@@ -1158,6 +1158,32 @@ Buchung→Import, Import→Konto, Regel→Kategorie (nicht Buchung→Vertrag).
 Würde ein Restore Buchungen dieses Geräts löschen, nennt die Bestätigung das
 vorher ausdrücklich (`describeBookingLoss`). Tests: `financeBackup.test.ts`.
 
+**CSV-Parser (Phase 14C, `domain/usecases/bankImport/`)**: reine Funktionen,
+kein IndexedDB, kein Netzwerk. `decodeBankFile()` liest Bytes strikt als
+UTF-8 (z. B. aus Numbers/Excel neu gespeichert), sonst als Windows-1252
+(Sparkassen-Original). `csv.ts` ist ein eigener kleiner RFC-4180-Leser
+(`;`, `""`, Umbrüche im Feld, LF/CRLF) – keine Bibliothek.
+`parseSparkasseCsv()` erkennt Giro (CSV-CAMT V2) bzw. Kreditkarte am
+Header, ordnet Spalten **nur über den Namen** zu, lehnt fehlende
+Pflichtspalten und Dateien mit mehreren Konten komplett ab (kein
+Teilimport) und liefert pro fehlerhafter Zeile eine Meldung mit Zeile und
+Spalte, nie mit Feldinhalt. Vorgemerkte Umsätze werden nur gezählt
+(`pendingCount`). Beträge: `parseBankAmount` (striktes deutsches Format,
+nutzt `parseGermanAmount`); Umrechnungskurse: `parseExchangeRate` (nie auf
+Cent gerundet); `Originalbetrag`/`Umrechnungskurs` nur bei echter
+Fremdwährung (`0,00`/`1,00` sind Platzhalter). Kreditkartenzeilen bekommen
+einen strukturellen `bookingText` (`KARTENUMSATZ`/`LASTSCHRIFT`/`GEBUEHR`,
+`CREDIT_CARD_BOOKING_TEXT`). `computeDedupeKeys()`: SHA-256 über die
+Felder aus Spec 4/4b (JSON-Array, Verwendungszweck ohne jedes Leerzeichen
+und in Großbuchstaben) + `:n` für identische Zeilen derselben Datei;
+`planImport()` teilt gegen die vorhandenen Schlüssel in neu/doppelt und
+liefert die `ImportBatchCounts`. Kontozuordnung über
+`accountIdentity.ts` (gesalzener Hash, `findMatchingAccount`). Tests:
+`sparkasseCsv.test.ts` gegen alle fünf Fixtures, inkl. überlappender
+Exporte, UTF-8-/CRLF-Varianten und 2.340 Zeilen. Die Tests lesen die
+Fixtures per `node:fs` (nur `readFileSync` ist in `src/test/nodeFs.d.ts`
+deklariert – die App selbst hat keine Node-Typen).
+
 ## PWA-Regeln
 
 - installierbar (Manifest + Icons)
