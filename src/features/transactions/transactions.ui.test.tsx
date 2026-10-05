@@ -53,6 +53,57 @@ describe('Buchungen page', () => {
   })
 })
 
+describe('Buchungsliste', () => {
+  async function importGiro() {
+    renderAt(ROUTES.transactionsImport)
+    selectFile(fixtureFile('sparkasse-giro-camt-v2-sample.csv'))
+    fireEvent.click(await screen.findByRole('button', { name: /Buchungen speichern/ }))
+    await screen.findByText(/Buchungen importiert/)
+  }
+
+  it('lists all bookings newest first and pages through them', async () => {
+    await importGiro()
+    const total = (await transactionRepository.getAll()).length
+    renderAt(ROUTES.transactions)
+    const list = await screen.findByRole('list', { name: 'Buchungsliste' })
+    expect(screen.getByText(`${total.toLocaleString('de-DE')} Buchungen`)).toBeInTheDocument()
+    expect(within(list).getAllByRole('link')).toHaveLength(50)
+    fireEvent.click(screen.getByRole('button', { name: /^Weitere \d+ anzeigen$/ }))
+    expect(within(list).getAllByRole('link')).toHaveLength(Math.min(100, total))
+  })
+
+  it('searches and filters, and takes filters from the URL', async () => {
+    await importGiro()
+    renderAt(`${ROUTES.transactions}?monat=2026-09&art=ausgaben`)
+    expect(await screen.findByLabelText('Monat')).toHaveDisplayValue('September 2026')
+    expect(screen.getByLabelText('Art')).toHaveDisplayValue('Ausgaben')
+
+    const septemberExpenses = (await transactionRepository.getAll()).filter((entry) => entry.bookingDate.startsWith('2026-09') && entry.flowType === 'expense')
+    expect(screen.getByText(`${septemberExpenses.length} Buchungen`)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Buchungen durchsuchen'), { target: { value: 'stadtwerke' } })
+    const list = screen.getByRole('list', { name: 'Buchungsliste' })
+    expect(within(list).getAllByRole('link')).toHaveLength(1)
+    expect(within(list).getByRole('link', { name: /Stadtwerke Muster GmbH/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }))
+    expect(screen.getByLabelText('Monat')).toHaveDisplayValue('Alle')
+    expect(screen.getByRole('button', { name: 'Filter zurücksetzen' })).toBeDisabled()
+  })
+
+  it('shows bookings without category on request and an empty state without matches', async () => {
+    await importGiro()
+    renderAt(ROUTES.transactions)
+    fireEvent.click(await screen.findByRole('button', { name: /noch ohne Kategorie/ }))
+    expect(screen.getByLabelText('Kategorie')).toHaveDisplayValue('Ohne Kategorie')
+    const list = screen.getByRole('list', { name: 'Buchungsliste' })
+    expect(within(list).getAllByText(/Ohne Kategorie/).length).toBe(within(list).getAllByRole('link').length)
+
+    fireEvent.change(screen.getByLabelText('Buchungen durchsuchen'), { target: { value: 'gibt es nicht' } })
+    expect(screen.getByText('Keine Buchungen gefunden. Passe deine Suche oder Filter an.')).toBeInTheDocument()
+  })
+})
+
 describe('CSV import', () => {
   it('shows a preview and stores nothing before saving', async () => {
     renderAt(ROUTES.transactionsImport)
