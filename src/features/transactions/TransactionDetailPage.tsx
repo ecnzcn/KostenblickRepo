@@ -16,6 +16,7 @@ import {
   type TransactionDetail,
 } from '../../domain/usecases/categorization/transactionCategorization'
 import { formatCurrency, formatDate } from '../../utils/formatters'
+import { ContractLinkSection } from './components/ContractLinkSection'
 import { RulePrompt } from './components/RulePrompt'
 
 const FLOW_LABELS: Record<FlowType, string> = {
@@ -38,7 +39,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <>
       <dt className="text-neutral-500">{label}</dt>
-      <dd className="break-words text-neutral-900">{children}</dd>
+      <dd className="min-w-0 text-neutral-900 [overflow-wrap:anywhere]">{children}</dd>
     </>
   )
 }
@@ -175,6 +176,8 @@ export function TransactionDetailPage() {
             <RulePrompt transaction={transaction} choice={promptChoice} onDone={() => setPromptChoice(null)} />
           ) : null}
         </section>
+
+        <ContractLinkSection key={transaction.contractId ?? 'none'} detail={detail} onLinked={() => setReloadToken((token) => token + 1)} />
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-5">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">

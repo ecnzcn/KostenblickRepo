@@ -242,6 +242,10 @@ export interface TransactionDetail {
   /** The other half of a card settlement pair, if any. */
   pair?: Transaction
   categories: Category[]
+  /** The linked contract, if it still exists (14F). */
+  contract?: Contract
+  /** Contracts the booking could be linked to. */
+  contracts: Contract[]
 }
 
 export interface AssignmentOptions {
@@ -273,12 +277,22 @@ export const CATEGORY_SOURCE_LABELS: Record<Transaction['categorySource'], strin
 export async function getTransactionDetail(id: string): Promise<TransactionDetail | undefined> {
   const transaction = await transactionRepository.getById(id)
   if (!transaction) return undefined
-  const [account, categories, pair] = await Promise.all([
+  const [account, categories, pair, allContracts] = await Promise.all([
     accountRepository.getById(transaction.accountId),
     categoryRepository.getAll(),
     transaction.transferPairId ? transactionRepository.getById(transaction.transferPairId) : Promise.resolve(undefined),
+    contractRepository.getAll(),
   ])
-  return { transaction, account, category: categories.find((category) => category.id === transaction.categoryId), pair, categories }
+  const contracts = allContracts.filter((contract) => !contract.deletedAt).sort((a, b) => a.provider.localeCompare(b.provider, 'de'))
+  return {
+    transaction,
+    account,
+    category: categories.find((category) => category.id === transaction.categoryId),
+    pair,
+    categories,
+    contract: contracts.find((contract) => contract.id === transaction.contractId),
+    contracts,
+  }
 }
 
 /** Income/expense bookings still without a category, newest first. */

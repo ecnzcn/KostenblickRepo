@@ -27,9 +27,16 @@ export function RunningContractCostsCard({ costs }: RunningContractCostsCardProp
           </p>
         </div>
       )}
-      <Link to={ROUTES.contracts} className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-accent">
-        Verträge anzeigen
-      </Link>
+      <div className="mt-4 flex flex-wrap gap-x-5">
+        <Link to={ROUTES.contracts} className="inline-flex min-h-11 items-center text-sm font-medium text-accent">
+          Verträge anzeigen
+        </Link>
+        {costs.monthly > 0 ? (
+          <Link to={ROUTES.fixedCosts} className="inline-flex min-h-11 items-center text-sm font-medium text-accent">
+            Soll/Ist ansehen
+          </Link>
+        ) : null}
+      </div>
     </section>
   )
 }

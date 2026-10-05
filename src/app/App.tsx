@@ -11,6 +11,7 @@ import { ImportBillPage } from '../features/bills/import/ImportBillPage'
 import { ContractDetailPage } from '../features/contracts/ContractDetailPage'
 import { ContractFormPage } from '../features/contracts/ContractFormPage'
 import { ContractsPage } from '../features/contracts/ContractsPage'
+import { FixedCostsPage } from '../features/contracts/FixedCostsPage'
 import { CostOverviewPage } from '../features/costOverview/CostOverviewPage'
 import { CostDetailPage } from '../features/costs/CostDetailPage'
 import { CostFormPage } from '../features/costs/CostFormPage'
@@ -63,6 +64,7 @@ export function App() {
 
           <Route path={ROUTES.contracts} element={<ContractsPage />} />
           <Route path={ROUTES.contractsNew} element={<ContractFormPage mode="create" />} />
+          <Route path={ROUTES.fixedCosts} element={<FixedCostsPage />} />
           <Route path={ROUTES.contractEditPattern} element={<ContractFormPage mode="edit" />} />
           <Route path={ROUTES.contractDetailPattern} element={<ContractDetailPage />} />
 

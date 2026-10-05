@@ -28,6 +28,12 @@ export function formatMonthYear(date: Date): string {
   return monthYearFormatter.format(date)
 }
 
+/** '2026-09' -> 'September 2026' */
+export function formatMonthKey(monthKey: string): string {
+  const [year, month] = monthKey.split('-').map(Number)
+  return monthYearFormatter.format(new Date(year ?? 0, (month ?? 1) - 1, 15))
+}
+
 /** '2026-09' -> 'Sep' */
 export function formatMonthShort(monthKey: string): string {
   const [year, month] = monthKey.split('-').map(Number)

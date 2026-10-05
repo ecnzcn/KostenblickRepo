@@ -17,6 +17,7 @@ export const ROUTES = {
   billEditPattern: '/abrechnungen/:id/bearbeiten',
   contracts: '/vertraege',
   contractsNew: '/vertraege/neu',
+  fixedCosts: '/vertraege/fixkosten',
   contractDetailPattern: '/vertraege/:id',
   contractEditPattern: '/vertraege/:id/bearbeiten',
   costs: '/kosten',

@@ -26,6 +26,9 @@ export type ContractMonthStatus =
   | 'missing'
   /** No debit, but the month is not (fully) imported - nothing to claim. */
   | 'open'
+  /** No debit and none expected (before the first linked debit, outside
+   * the contract period, or an irregular/yearly payment). */
+  | 'none'
   /** Debits without a Soll to compare (irregular payments). */
   | 'info'
 
@@ -192,8 +195,9 @@ export function contractMonthEntry(
   const bookingCount = summary.counts.get(month) ?? 0
   if (cadence === 'monthly') {
     if (bookingCount > 0) return { month, expected: contract.monthlyCost, actual, bookingCount, status: statusFor(contract.monthlyCost, actual) }
+    if (!covered) return { month, expected: contract.monthlyCost, actual: 0, bookingCount: 0, status: 'open' }
     const afterFirstDebit = summary.debitMonths[0] !== undefined && month >= summary.debitMonths[0]
-    return { month, expected: contract.monthlyCost, actual: 0, bookingCount: 0, status: covered && afterFirstDebit && isContractActiveInMonth(contract, month) ? 'missing' : 'open' }
+    return { month, expected: contract.monthlyCost, actual: 0, bookingCount: 0, status: afterFirstDebit && isContractActiveInMonth(contract, month) ? 'missing' : 'none' }
   }
   if (bookingCount === 0) return undefined
   if (cadence === 'yearly') {
@@ -291,7 +295,7 @@ export function buildFixedCostOverview(
       const accountIds = new Set(bookings.map((entry) => entry.accountId))
       const entry = contractMonthEntry(contract, cadence, summary, month, isCovered(month, accountIds, input.coveredMonths))
       if (!entry) {
-        return { contract, expected: contract.monthlyCost, actual: 0, bookingCount: 0, cadence, status: cadence === 'yearly' ? ('yearly_not_due' as const) : ('open' as const) }
+        return { contract, expected: contract.monthlyCost, actual: 0, bookingCount: 0, cadence, status: cadence === 'yearly' ? ('yearly_not_due' as const) : ('none' as const) }
       }
       return {
         contract,

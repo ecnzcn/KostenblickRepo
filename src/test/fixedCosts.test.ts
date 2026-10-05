@@ -196,6 +196,17 @@ describe('buildFixedCostOverview', () => {
     expect(overview).toMatchObject({ expectedTotal: 154.99, actualTotal: 44.99, unlinkedCount: 1, missingCount: 1, deviationCount: 1, monthCovered: true })
   })
 
+  it('claims nothing before the first linked debit or for irregular payments', () => {
+    const irregular = contract({ id: 'c5', provider: 'Verein', monthlyCost: 10 })
+    const data = input([debit('2026-08'), debit('2026-02', -50, { contractId: 'c5' }), debit('2026-06', -45, { contractId: 'c5' })])
+    const july = buildFixedCostOverview([internet, irregular], '2026-07', data)
+    expect(july.rows.map((row) => [row.contract.provider, row.cadence, row.status])).toEqual([
+      ['Telekom', 'monthly', 'none'],
+      ['Verein', 'irregular', 'none'],
+    ])
+    expect(july.missingCount).toBe(0)
+  })
+
   it('only counts debits of linked bookings - other expenses never enter Ist', () => {
     const overview = buildFixedCostOverview([internet], '2026-09', input(transactions))
     expect(overview.actualTotal).toBe(44.99)
