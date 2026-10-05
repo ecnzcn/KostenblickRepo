@@ -131,7 +131,8 @@ ein additives `Bill`-Feld, eine deaktivierte Schreibstelle in
 Seit Phase 14B gibt es die lokalen Finanz-Entities (`Account`,
 `Transaction`, `ImportBatch`, `CategoryRule`, `SavingsGoal`) samt Stores und
 `domain/repositories/financeRepositories.ts`; `DATABASE_VERSION` ist **3**
-(siehe „Finanztracker"-Abschnitt unten).
+(siehe „Finanztracker"-Abschnitt unten). Seit Phase 14D liegen der
+Buchungs-Import und die Buchungsseite unter `features/transactions/`.
 
 ## Domain Models
 
@@ -1184,6 +1185,59 @@ Exporte, UTF-8-/CRLF-Varianten und 2.340 Zeilen. Die Tests lesen die
 Fixtures per `node:fs` (nur `readFileSync` ist in `src/test/nodeFs.d.ts`
 deklariert – die App selbst hat keine Node-Typen).
 
+**Import-Flow (Phase 14D, `bankImport/importTransactions.ts`,
+`features/transactions/`)**: `/buchungen/import` läuft über Datei wählen →
+Vorschau → Speichern. `prepareImport()` liest, prüft und ordnet das Konto
+zu (gesalzener Hash; unbekanntes Konto → wird erst beim Speichern
+angelegt, Name editierbar) und baut die Vorschau (Zeitraum, neu/doppelt/
+vorgemerkt, ohne Kategorie, Einnahmen/Ausgaben/Gespart) – **schreibt
+nichts**. `commitImport()` speichert Konto, `ImportBatch`, Buchungen und
+die neu entstehenden Kartenpaare in **einer** IndexedDB-Transaktion
+(Fehler → nichts gespeichert); Vorschauen mit Zeilenfehlern oder ohne neue
+Buchungen lassen sich nicht speichern. `undoImport()` löscht die Buchungen
+einer Charge hart und verknüpft den Rest neu – derselbe Export lässt sich
+danach erneut importieren. `/buchungen` zeigt bisher die Importe (mit
+„Import rückgängig machen“ nach Bestätigung) und den Hinweis auf fehlende
+Kartenumsätze; die Buchungsliste selbst folgt in 14G.
+
+**Erst-Einordnung** (`classifyBankRow`, bis 14E eigene Regeln bringt):
+Strukturregeln vor Bank-Kategorie – `EIGENE KREDITKARTENABRECHN.`/
+`KREDITKARTENABRECHNUNG` → Ausgabe „Kreditkarte (nicht aufgeschlüsselt)“,
+`UEBERTRAG…` oder Kategorie „Geldanlage“ → `saving` (beide Richtungen,
+Rückflüsse mindern „Gespart“), `LS WIEDERGUTSCHRIFT`/`WIEDERGUTSCHRIFT` →
+Ausgabe mit positivem Betrag (`isReversal`), `BARGELDEINZAHLUNG…` →
+„Sonstige Einnahmen“, `ENTGELTABSCHLUSS`/`ABSCHLUSS` → Gebühren; sonst
+entscheidet das Vorzeichen (positiv = Einnahme, O-8), die Sparkassen-
+Kategorie ist nur Startvorschlag (`SPARKASSE_CATEGORY_MAP` in
+`constants/bankCategories.ts`, `LOHN  GEHALT` → Gehalt, O-10). Eine
+Einnahme bekommt nie eine Ausgabekategorie. Kreditkarte: `LASTSCHRIFT` →
+`transfer`, Fremdwährungsgebühr → Gebühren, Kartenumsätze vorerst ohne
+Kategorie.
+
+**Kartenpaare** (`reconcileCardSettlements`, rein, nach jedem Import und
+jedem Rückgängigmachen über alle Buchungen): Giro-Abrechnung und
+Karten-„Lastschrift“ mit centgenau gleichem Betrag, Giro 0–10 Tage danach
+(`SETTLEMENT_PAIRING_WINDOW_DAYS`), nächstes Datum zuerst, 1:1 → beide
+`transfer` mit `transferPairId`. Ungepaarte Giro-Abrechnung: Ausgabe
+„Kreditkarte (nicht aufgeschlüsselt)“ – außer es gibt seit der letzten
+gepaarten Lastschrift schon Kartenumsätze, dann vorläufig `transfer`
+(`isProvisionalSettlement`, Hinweis auf `/buchungen`), damit nichts doppelt
+zählt (O-1). Ein manuell gesetzter `flowType` wird nie angefasst, eine
+manuelle Kategorie bleibt.
+
+**Backup-Erinnerung** (`domain/usecases/backupReminder.ts`): Zeitpunkt des
+letzten Backups dieses Geräts in `localStorage` (Komfortwert, gesetzt von
+„Backup exportieren“ und `downloadBackup()`); „Daten & Backup“ zeigt ihn
+und warnt, wenn seitdem Buchungen importiert wurden, plus Hinweis, dass
+das Backup Kontoumsätze enthält. Nach jedem Import fragt die Seite
+„Backup erstellen?“ (Button lädt direkt herunter, „Später“ blendet aus).
+
+Tests: `bankImportFlow.test.ts` (Einordnung, Paarung inkl. O-1-Fall,
+Vorschau schreibt nichts, Speichern, Konto wiedererkannt, Kartenpaare aus
+den Fixtures, Rückgängig + erneuter Import, Atomizität),
+`transactions.ui.test.tsx` (Vorschau, Speichern, Abbrechen, Fehlerdatei,
+bereits importiert, zweite Datei, Rückgängig, Mehr-Link, Backup-Hinweis).
+
 ## PWA-Regeln
 
 - installierbar (Manifest + Icons)
@@ -1246,7 +1300,9 @@ Apple-inspiriert, minimalistisch, hochwertig, ruhig, mobile-first. Große
 Kennzahlen, dezente Karten, übersichtliche Diagramme, viel Weißraum.
 
 Navigation (Bottom Nav auf Mobile, Sidebar ab Desktop-Breakpoint):
-Home, Statistik, Abrechnungen, Verträge, Mehr.
+Home, Buchungen, Statistik, Verträge, Mehr (seit Phase 14D; „Abrechnungen“
+ist seitdem unter „Mehr“ verlinkt – Entscheidung 4 in
+`docs/specs/phase-14a-entscheidungen.md`).
 
 Desktop ist keine einfach vergrößerte Mobile-UI – zusätzlicher Platz wird
 sinnvoll genutzt (z. B. Sidebar-Navigation statt Bottom Nav).
